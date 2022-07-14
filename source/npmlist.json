@@ -1,0 +1,86 @@
+{
+    "version": "0.1.1",
+    "name": "forensic-cdk-solution",
+    "dependencies": {
+        "@aws-cdk/aws-codestar-alpha": {
+            "version": "2.0.0-alpha.1",
+            "resolved": "https://registry.npmjs.org/@aws-cdk/aws-codestar-alpha/-/aws-codestar-alpha-2.0.0-alpha.1.tgz"
+        },
+        "@types/jest": {
+            "version": "27.0.2",
+            "resolved": "https://registry.npmjs.org/@types/jest/-/jest-27.0.2.tgz"
+        },
+        "@types/node": {
+            "version": "16.11.9",
+            "resolved": "https://registry.npmjs.org/@types/node/-/node-16.11.9.tgz"
+        },
+        "@types/uuid": {
+            "version": "8.3.4",
+            "resolved": "https://registry.npmjs.org/@types/uuid/-/uuid-8.3.4.tgz"
+        },
+        "aws-cdk-lib": {
+            "version": "2.22.0",
+            "resolved": "https://registry.npmjs.org/aws-cdk-lib/-/aws-cdk-lib-2.22.0.tgz"
+        },
+        "aws-cdk": {
+            "version": "2.22.0",
+            "resolved": "https://registry.npmjs.org/aws-cdk/-/aws-cdk-2.22.0.tgz"
+        },
+        "aws-sdk": {
+            "version": "2.1087.0",
+            "resolved": "https://registry.npmjs.org/aws-sdk/-/aws-sdk-2.1087.0.tgz"
+        },
+        "cdk-nag": {
+            "version": "2.10.5",
+            "resolved": "https://registry.npmjs.org/cdk-nag/-/cdk-nag-2.10.5.tgz"
+        },
+        "constructs": {
+            "version": "10.0.26",
+            "resolved": "https://registry.npmjs.org/constructs/-/constructs-10.0.26.tgz"
+        },
+        "eslint-config-prettier": {
+            "version": "8.5.0",
+            "resolved": "https://registry.npmjs.org/eslint-config-prettier/-/eslint-config-prettier-8.5.0.tgz"
+        },
+        "eslint-config-typescript": {
+            "version": "3.0.0",
+            "resolved": "https://registry.npmjs.org/eslint-config-typescript/-/eslint-config-typescript-3.0.0.tgz"
+        },
+        "eslint-plugin-header": {
+            "version": "3.1.1",
+            "resolved": "https://registry.npmjs.org/eslint-plugin-header/-/eslint-plugin-header-3.1.1.tgz"
+        },
+        "fs": {
+            "version": "0.0.1-security",
+            "resolved": "https://registry.npmjs.org/fs/-/fs-0.0.1-security.tgz"
+        },
+        "prettier": {
+            "version": "2.7.0",
+            "resolved": "https://registry.npmjs.org/prettier/-/prettier-2.7.0.tgz"
+        },
+        "rimraf": {
+            "version": "3.0.2",
+            "resolved": "https://registry.npmjs.org/rimraf/-/rimraf-3.0.2.tgz"
+        },
+        "source-map-support": {
+            "version": "0.5.16",
+            "resolved": "https://registry.npmjs.org/source-map-support/-/source-map-support-0.5.16.tgz"
+        },
+        "ts-jest": {
+            "version": "27.0.5",
+            "resolved": "https://registry.npmjs.org/ts-jest/-/ts-jest-27.0.5.tgz"
+        },
+        "ts-node": {
+            "version": "10.2.1",
+            "resolved": "https://registry.npmjs.org/ts-node/-/ts-node-10.2.1.tgz"
+        },
+        "typescript": {
+            "version": "4.4.3",
+            "resolved": "https://registry.npmjs.org/typescript/-/typescript-4.4.3.tgz"
+        },
+        "uuid": {
+            "version": "8.3.2",
+            "resolved": "https://registry.npmjs.org/uuid/-/uuid-8.3.2.tgz"
+        }
+    }
+}

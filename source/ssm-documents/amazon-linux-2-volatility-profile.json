@@ -1,0 +1,82 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Linux instances to create profile details",
+    "parameters": {
+        "s3bucket": {
+            "type": "String",
+            "description": "(Required) S3 bucket details.",
+            "default": "S3 Bucket Name"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details",
+            "default": "ap-southeast-2"
+        },
+        "ExecutionTimeout": {
+            "type": "String",
+            "description": "(Required) SSM document execution timeout (seconds)",
+            "default": "4000"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "{{ExecutionTimeout}}",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "cd /tmp",
+                    "mkdir -p forensic-profile-builder",
+                    "cd forensic-profile-builder",
+                    "sudo yum update -y",
+                    "sudo yum install git -y",
+                    "git clone https://github.com/volatilityfoundation/volatility.git",
+                    "sudo yum groupinstall 'Development Tools' -y",
+                    "sudo yum install kernel-devel -y",
+                    "unamerelease=$(uname -r)",
+                    "kerneldevel='kernel-devel-'",
+                    "kerneldevel+=$unamerelease",
+                    "sudo yum install ${kerneldevel} -y",
+                    "sudo yum search libdwarf",
+                    "sudo yum install libdwarf -y",
+                    "sudo yum install python3-devel -y",
+                    "sudo yum install pcre-tools gcc autoconf automake libtool nc git kernel-devel libdwarf-tools -y",
+                    "sudo pip3 install distorm3 pycrypto pillow openpyxl ujson pytz IPython",
+                    "cd ./volatility/tools/linux/",
+                    "make clean",
+                    "make",
+                    "cd /tmp/forensic-profile-builder/volatility",
+                    "sudo zip volatility/plugins/overlays/linux/${unamerelease}.zip tools/linux/module.dwarf /boot/System.map-${unamerelease}",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "aws configure set default.s3.max_concurrent_requests 20",
+                    "aws s3 cp volatility/plugins/overlays/linux/${unamerelease}.zip s3://{{s3bucket}}/volatility2/profiles/",
+                    "echo s3 copy complete",
+                    "ls -ltr",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}

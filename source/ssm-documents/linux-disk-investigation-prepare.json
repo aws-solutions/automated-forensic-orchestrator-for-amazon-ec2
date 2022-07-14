@@ -1,0 +1,59 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Linux instance to prepare for disk investigation",
+    "parameters": {
+        "forensicId": {
+            "type": "String",
+            "description": "(Required) forensic id for audit.",
+            "default": "unknown-forensicId"
+        },
+        "volumeDeviceName": {
+            "type": "String",
+            "description": "(Optional) attachedVolumeMountInfo.",
+            "default": "/dev/xvdg1"
+        },
+        "targetFolder": {
+            "type": "String",
+            "description": "(Optional) targetFolder.",
+            "default": "/data"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) The commands to run or the path to an existing script on the instance.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) The commands to run or the path to an existing script on the instance.",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details.",
+            "default": "ap-southeast-2"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "60",
+                "runCommand": [
+                    "echo processing {{forensicId}}",
+                    "#!/bin/bash",
+                    "mkdir -p {{targetFolder}}",
+                    "mount {{volumeDeviceName}} {{targetFolder}}"
+                ]
+            }
+        }
+    ]
+}

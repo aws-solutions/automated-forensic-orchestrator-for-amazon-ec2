@@ -1,0 +1,49 @@
+{
+    "bumpFiles": [
+        {
+            "filename": "package.json",
+            "type": "json"
+        },
+        {
+            "filename": "package-lock.json",
+            "type": "json"
+        }
+    ],
+    "types": [
+        {
+            "type": "feat",
+            "section": "Features"
+        },
+        {
+            "type": "fix",
+            "section": "Bug Fixes"
+        },
+        {
+            "type": "test",
+            "section": "Tests",
+            "hidden": true
+        },
+        {
+            "type": "build",
+            "section": "Build System",
+            "hidden": true
+        },
+        {
+            "type": "ci",
+            "hidden": true
+        },
+        {
+            "type": "chore",
+            "hidden": true
+        },
+        {
+            "type": "doc",
+            "hidden": true
+        }
+    ],
+    "commitUrlFormat": "{{hash}}",
+    "compareUrlFormat": "Changes between tag {{previousTag}} and tag {{currentTag}}",
+    "infile": "../CHANGELOG.md",
+    "header": "# AWS Compute Forensics Solutions Release Changelog",
+    "releaseCommitMessageFormat": "Release AWS Compute Forensics Solutions {{currentTag}}"
+}

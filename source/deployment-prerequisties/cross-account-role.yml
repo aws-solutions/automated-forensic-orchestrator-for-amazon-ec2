@@ -1,0 +1,280 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+    solutionInstalledAccount:
+        Default: 123456789012
+        Type: Number
+        Description: forensic Account ID
+    solutionAccountRegion:
+        Default: us-west-2
+        Type: String
+        Description: AWS Region details
+    kmsKey:
+        Default: arn:aws:kms:us-east-1:123456789012:key/4395d619-856d-4d90-b69a-3584b477bd86
+        Type: String
+        Description: KMS key of  EBS volume
+
+Resources:
+    forensicAlias:
+        Type: 'AWS::KMS::Alias'
+        Properties:
+            AliasName: alias/forensickey
+            TargetKeyId: !Ref forensickey
+    forensickey:
+        Type: 'AWS::KMS::Key'
+        Properties:
+            Description: An example symmetric encryption KMS key
+            EnableKeyRotation: true
+            PendingWindowInDays: 20
+            KeyPolicy:
+                Version: 2012-10-17
+                Id: key-default-1
+                Statement:
+                    - Sid: Enable IAM User Permissions
+                      Effect: Allow
+                      Principal:
+                          AWS:
+                              - !Join
+                                - ''
+                                - - 'arn:aws:iam::'
+                                  - !Ref AWS::AccountId
+                                  - ':root'
+                      Action: 'kms:*'
+                      Resource: '*'
+                    - Sid: Allow administration of the key
+                      Effect: Allow
+                      Principal:
+                          AWS:
+                              - !Join
+                                - ''
+                                - - 'arn:aws:iam::'
+                                  - !Ref AWS::AccountId
+                                  - ':root'
+                              - !Join
+                                - ''
+                                - - 'arn:aws:iam::'
+                                  - !Ref solutionInstalledAccount
+                                  - ':root'
+                      Action:
+                          - 'kms:Create*'
+                          - 'kms:Describe*'
+                          - 'kms:Enable*'
+                          - 'kms:List*'
+                          - 'kms:Put*'
+                          - 'kms:Update*'
+                          - 'kms:Revoke*'
+                          - 'kms:Disable*'
+                          - 'kms:Get*'
+                          - 'kms:Delete*'
+                          - 'kms:ScheduleKeyDeletion'
+                          - 'kms:CancelKeyDeletion'
+                      Resource: '*'
+    ForensicAppAccountKMSPolicyFDC5F105:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyDocument:
+                Statement:
+                    - Action:
+                          - kms:Encrypt
+                          - kms:Decrypt
+                          - kms:ReEncrypt*
+                          - kms:GenerateDataKey*
+                          - kms:DescribeKey
+                      Effect: Allow
+                      Resource: !GetAtt forensickey.Arn
+                    - Action:
+                          - kms:CreateGrant
+                      Effect: Allow
+                      Resource: '*'
+                      Condition:
+                          Bool:
+                              kms:GrantIsForAWSResource: true
+                Version: '2012-10-17'
+            PolicyName: ForensicCrossAppAccountKMSFDC5F105
+            Roles:
+                - Ref: ForensicCrossAccountRole256E0D71
+
+    ForensicCrossAccountRole256E0D71:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Statement:
+                    - Action: sts:AssumeRole
+                      Effect: Allow
+                      Principal:
+                          AWS:
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/triage-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/shareSnapShot-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/memoryAcquisition-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/checkMemoryAcquisition-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/isolateForensicEc2Instance-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/performInstanceSnapshot-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/checkSnapShotStatus-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/isolateForensicEc2Instance-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/snapshotCopy-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+                              - !Sub
+                                - arn:aws:iam::${TARGET_ACCOUNT}:role/snapshotCopyChecker-${TARGET_REGION}-Role
+                                - {
+                                      TARGET_ACCOUNT: !Ref solutionInstalledAccount,
+                                      TARGET_REGION: !Ref solutionAccountRegion,
+                                  }
+
+                Version: '2012-10-17'
+            RoleName: !Join
+                - ''
+                - - 'ForensicEc2AllowAccessRole-'
+                  - !Ref 'AWS::Region'
+    ForensicCrossAccountRoleDefaultPolicyFDC5F105:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyDocument:
+                Statement:
+                    - Action:
+                          - ec2:CreateSnapshots
+                          - ec2:CreateSnapshot
+                          - ec2:CreateTags
+                          - ec2:CreateSecurityGroup
+                          - ec2:CopySnapshot
+                          - ec2:ModifySnapshotAttribute
+                          - ec2:CreateSecurityGroup
+                          - ec2:AuthorizeSecurityGroupIngress
+                          - ec2:RevokeSecurityGroupIngress
+                          - ec2:AuthorizeSecurityGroupEgress
+                          - ec2:RevokeSecurityGroupEgress
+                          - ec2:ModifySecurityGroupRules
+                          - ec2:UpdateSecurityGroupRuleDescriptionsIngress
+                          - ec2:UpdateSecurityGroupRuleDescriptionsEgress
+                          - ec2:ModifySecurityGroupRules
+                          - ec2:ModifyNetworkInterfaceAttribute
+                          - ec2:ModifyInstanceAttribute
+                      Effect: Allow
+                      Resource: '*'
+                Version: '2012-10-17'
+            PolicyName: ForensicCrossAccountRoleDefaultPolicyFDC5F105
+            Roles:
+                - Ref: ForensicCrossAccountRole256E0D71
+    ForensicCrossAccountKMSPolicyFDC5F105:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyDocument:
+                Statement:
+                    - Action:
+                          - kms:Encrypt
+                          - kms:Decrypt
+                          - kms:ReEncrypt*
+                          - kms:GenerateDataKey*
+                          - kms:DescribeKey
+                      Effect: Allow
+                      Resource: !Ref kmsKey
+                    - Action:
+                          - kms:CreateGrant
+                      Effect: Allow
+                      Resource: '*'
+                      Condition:
+                          Bool:
+                              kms:GrantIsForAWSResource: true
+                Version: '2012-10-17'
+            PolicyName: ForensicCrossAccountKMSFDC5F105
+            Roles:
+                - Ref: ForensicCrossAccountRole256E0D71
+
+    ForensicCrossAccountReadOnlyPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyDocument:
+                Statement:
+                    - Action:
+                          - ec2:Describe*
+                          - iam:Get*
+                          - iam:List*
+                      Effect: Allow
+                      Resource: '*'
+                Version: '2012-10-17'
+            PolicyName: ForensicCrossAccountReadOnlyPolicy
+            Roles:
+                - Ref: ForensicCrossAccountRole256E0D71
+
+    ForensicCrossAccountSSMPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyDocument:
+                Statement:
+                    - Action:
+                          - 'ssm:ListDocuments'
+                          - 'ssm:ListDocumentVersions'
+                          - 'ssm:DescribeDocument'
+                          - 'ssm:GetDocument'
+                          - 'ssm:DescribeInstanceInformation'
+                          - 'ssm:DescribeDocumentParameters'
+                          - 'ssm:DescribeInstanceProperties'
+                          - 'ssm:ListCommands'
+                          - 'ssm:ListCommandInvocations'
+                          - 'ssm:DescribeAutomationExecutions'
+                          - 'ssm:GetDocument'
+                          - 'ssm:GetCommandInvocation'
+                      Effect: Allow
+                      Resource: '*'
+                Version: '2012-10-17'
+            PolicyName: ForensicCrossAccountSSMPolicy
+            Roles:
+                - Ref: ForensicCrossAccountRole256E0D71
+
+    ForensicCrossAccountSSMRunPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyDocument:
+                Statement:
+                    - Action:
+                          - 'ssm:SendCommand'
+                          - 'ssm:StartAutomationExecution'
+                          - 'ssm:CancelCommand'
+                      Effect: Allow
+                      Resource: '*'
+                Version: '2012-10-17'
+            PolicyName: ForensicCrossAccountSSMRunPolicy
+            Roles:
+                - Ref: ForensicCrossAccountRole256E0D71
