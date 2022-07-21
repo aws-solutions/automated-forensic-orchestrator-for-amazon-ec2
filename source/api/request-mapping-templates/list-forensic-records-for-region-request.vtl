@@ -1,0 +1,22 @@
+{
+    "version" : "2017-02-28",
+    "operation" : "Query",
+    "query" : {
+      "expression": "#GSI1PK = :GSI1PK and begins_with(#GSI1SK, :GSI1SK)",
+      "expressionNames": {
+        "#GSI1PK": "GSI1PK",
+        "#GSI1SK": "GSI1SK",
+      },
+      "expressionValues" : {
+        ":GSI1PK": $util.dynamodb.toDynamoDBJson($ctx.args.input.awsAccountId),
+        ":GSI1SK": $util.dynamodb.toDynamoDBJson("#REGION#${ctx.args.input.awsRegion}"),        
+      },
+      #if( ${ctx.args.limit} )
+        ,"limit": $util.toJson($context.arguments.limit)
+    	#end
+      #if( ${ctx.args.nextToken} )
+        ,"nextToken": $util.toJson($context.arguments.nextToken)
+      #end
+    },
+    "index" : "GSI1"
+}

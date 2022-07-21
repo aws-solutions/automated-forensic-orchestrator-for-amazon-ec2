@@ -1,0 +1,6 @@
+# Ignore artifacts:
+dist/
+.aws-sam/
+coverage
+node_modules/
+cdk.out/

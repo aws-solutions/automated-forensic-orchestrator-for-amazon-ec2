@@ -1,0 +1,85 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Windows instance to prepare for Memory acquisition.",
+    "parameters": {
+        "s3Location": {
+            "type": "String",
+            "description": "S3 location to load the results into bucket",
+            "default": "aws s3 cp - s3://{3}/{1}/{2}/{0}/memory/{0}.raw"
+        },
+        "attachedVolumeId": {
+            "type": "String",
+            "description": "(Required)Volume Details.",
+            "default": "attachedVolumeId"
+        },
+        "attachedVolumeMountInfo": {
+            "type": "String",
+            "description": "(Required)Volume Details.",
+            "default": "Volumedetails"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "forensicID": {
+            "type": "String",
+            "description": "(Required) forensicID of memory acquisition",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details.",
+            "default": "ap-southeast-2"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "400",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "cd /tmp",
+                    "mkdir forensic-analysis",
+                    "cd forensic-analysis",
+                    "mkdir -p /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/",
+                    "mkdir -p /tmp/forensic-analysis/data/{{forensicID}}_working_dir/",
+                    "cd data/{{forensicID}}_evidence_dir/",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "apt  install awscli -y",
+                    "pip3 install awsebcli --upgrade",
+                    "pip3 install --upgrade awscli",
+                    "aws configure set default.s3.max_concurrent_requests 100",
+                    "ls",
+                    "cd /tmp/forensic-analysis/data/{{forensicID}}_working_dir/",
+                    "log2timeline.py -u --status_view none --partitions all --hashers md5 --hasher_file_size_limit 1073741824 --logfile log2timeline-{{attachedVolumeId}}.log.gz --storage_file log2timeline_{{attachedVolumeId}}.plaso attachedVolumeMountInfo",
+                    "psort.py -u --status_view none -o dynamic --dynamic-time --fields datetime,date,time,timezone,macb,type,source,sourcetype,user,hostname,description,filename,inode,md5_hash -w log2timeline_{{attachedVolumeId}}_output.csv /log2timeline_{{attachedVolumeId}}.plaso",
+                    "ls",
+                    "sha256sum log2timeline_{{attachedVolumeId}}_output.csv > log2timeline_{{attachedVolumeId}}_output_sha256.txt ",
+                    "aws s3 cp /tmp/forensic-analysis/data/{{forensicID}}_working_dir/ {{s3Location}}  --recursive",
+                    "echo s3 cp complete",
+                    "ls -ltr",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}

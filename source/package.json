@@ -1,0 +1,59 @@
+{
+    "name": "forensic-cdk-solution",
+    "version": "1.0.0",
+    "bin": {
+        "cdk-solution": "bin/forensic-cdk-solution.js"
+    },
+    "scripts": {
+        "lint": "eslint --fix --ext .ts . && prettier --write './**/*.{ts,js,json}' ",
+        "cleanup": "tsc --build ./ --clean && rm -rf node_modules && rm -f package-lock.json",
+        "cleanup:tsc": "tsc --build ./ --clean",
+        "build": "npm run build:collector && npm run build-lambda",
+        "build:collector": "cd lib/lambda; npm ci; npm run build; cd -",
+        "watch": "tsc -w",
+        "test": "jest test -- -u",
+        "cdk": "cdk",
+        "synth": "cdk context --clear && cdk synth -q",
+        "build-lambda": "make install && make test",
+        "all": "npm ci && npm run lint &&  npm run build && npm run test && tsc && npm run synth",
+        "deploy": "cdk deploy --all",
+        "destroy": "cdk destroy --all",
+        "release:patch": "standard-version --release-as patch",
+        "release:minor": "standard-version --release-as minor",
+        "release:major": "standard-version --release-as major",
+        "release": "standard-version"
+    },
+    "devDependencies": {
+        "@types/jest": "28.1.4",
+        "@types/uuid": "^8.3.4",
+        "rimraf": "3.0.2"
+    },
+    "peerDependencies": {
+        "constructs": "^10.0.0"
+    },
+    "dependencies": {
+        "@aws-cdk/assert": "2.31.0",
+        "@types/node": "18.0.3",
+        "@typescript-eslint/eslint-plugin": "5.30.5",
+        "@typescript-eslint/parser": "5.30.5",
+        "aws-cdk": "^2.31.0",
+        "aws-cdk-lib": "2.31.0",
+        "aws-sdk": "2.1170.0",
+        "cdk-nag": "^2.15.5",
+        "constructs": "^10.0.0",
+        "eslint": "8.19.0",
+        "eslint-config-prettier": "^8.3.0",
+        "eslint-config-typescript": "^3.0.0",
+        "eslint-plugin-header": "^3.1.1",
+        "eslint-plugin-prettier": "4.2.1",
+        "fs": "^0.0.1-security",
+        "jest": "28.1.2",
+        "jest-junit": "^14.0.0",
+        "prettier": "2.7.1",
+        "source-map-support": "0.5.21",
+        "ts-jest": "28.0.5",
+        "ts-node": "10.8.2",
+        "typescript": "4.7.4",
+        "uuid": "^8.3.2"
+    }
+}

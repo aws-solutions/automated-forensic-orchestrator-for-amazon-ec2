@@ -1,0 +1,24 @@
+name: SIFTInstall
+description: This downloads SIFT and Installs.
+schemaVersion: 1.0
+
+phases:
+    - name: build
+      steps:
+          - name: DownloadSiftPackage
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - wget https://github.com/teamdfir/sift-cli/releases/download/v1.14.0-rc1/sift-cli-linux
+                    - wget https://github.com/teamdfir/sift-cli/releases/download/v1.14.0-rc1/sift-cli-linux.sig
+                    - wget https://github.com/teamdfir/sift-cli/releases/download/v1.14.0-rc1/sift-cli.pub
+                    - wget "https://github.com/sigstore/cosign/releases/download/v1.7.1/cosign-linux-amd64"
+                    - sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+                    - chmod +x /usr/local/bin/cosign
+                    - sudo mv sift-cli-linux /usr/local/bin/sift
+                    - cosign verify-blob --key sift-cli.pub --signature sift-cli-linux.sig sift-cli-linux
+                    - chmod 755 /usr/local/bin/sift
+                    - sudo sift install --mode=server --user=ubuntu
+                    - sudo apt  install awscli -y
+                    - pip3 install awsebcli --upgrade
+                    - pip3 install --upgrade awscli

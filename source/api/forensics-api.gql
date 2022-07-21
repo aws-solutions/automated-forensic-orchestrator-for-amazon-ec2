@@ -1,0 +1,300 @@
+scalar AWSDateTime
+scalar AWSURL
+scalar AWSJSON
+
+type Snapshot {
+    snapshotId: String
+    volumeId: String
+    volumeSize: Int
+    awsAccountId: String
+    region: String 
+}
+
+type Volume {
+    volumeId: String
+    volumeSize: Int
+    awsAccountId: String
+    region: String
+}
+
+type Finding {
+    id: String
+    service: String
+    region: String
+}
+
+type ForensicTimelineEvent {
+    id: ID!
+    forensicId: ID!
+    phase: ForensicsProcessingPhase!
+    name: String
+    description: String
+    componentId: String
+    componentType: String 
+    creationTime: AWSDateTime
+    artifact: ForensicArtifact 
+    eventData: AWSJSON
+}
+
+enum ArtifactCategory {
+    DISK
+    MEMORY
+}
+
+enum ArtifactType {
+    EC2SNAPSHOT
+    EC2VOLUME
+    DISKDUMP
+    MEMORYDUMP
+    DISKANALYSIS
+    MEMORYANALYSIS
+}
+
+enum ArtifactStatus {
+    CREATING
+    SUCCESS
+    FAILED
+}
+
+enum ResourceType {
+    INSTANCE
+}
+
+type ArtifactDownloadUrl {
+    id: ID!
+    artifactId: ID!
+    url: AWSURL!
+}
+
+type ForensicArtifact {
+    id: ID!
+    forensicId: ID!
+    category: ArtifactCategory
+    type: ArtifactType
+    status: ArtifactStatus
+    componentId: String 
+    componentType: String 
+    creationTime: String 
+    lastUpdatedTime: String 
+    snapshot: Snapshot 
+    volume: Volume        
+    inputArtifactCategory: ArtifactCategory
+    inputArtifactType: ArtifactType
+    inputArtifactId: String 
+    ssmDocumentName: String 
+    ssmCommandId: String
+    artifactLocation: String 
+    artifactSize: Int
+    artifactSHA256: String
+}
+
+enum ForensicsProcessingPhase {
+    TRIAGE
+    ACQUISITION
+    INVESTIGATION
+    SUCCESS
+    FAILED
+}
+
+type ForensicsRecord {
+    id: ID!
+    resourceType: ResourceType
+    resourceId: String
+    awsAccountId: String
+    awsRegion: String
+    creationTime: AWSDateTime
+    lastUpdatedTime: AWSDateTime
+    triageStatus: ForensicsProcessingPhase
+    triageStatusDescription: String
+    memoryAnalysisStatus: ForensicsProcessingPhase
+    memoryAnalysisStatusDescription: String
+    diskAnalysisStatus: ForensicsProcessingPhase
+    diskAnalysisStatusDescription: String
+    completionTime: AWSDateTime
+    resourceInfo: AWSJSON
+    sourceAccountSnapshots: [Snapshot]
+    forensicAccountSnapshots: [Snapshot]
+    forensicAccountVolumes: [Volume] 
+    associatedFindings: [Finding]
+}
+
+type ForensicsRecords {
+    items: [ForensicsRecord!]!
+    nextToken: String
+}
+
+type ForensicArtifacts {
+    items: [ForensicArtifact!]!
+    nextToken: String
+}
+
+type ForensicTimelineEvents {
+    items: [ForensicTimelineEvent!]!
+    nextToken: String
+}
+
+input AllRecordsInput {
+    nextToken: String
+    limit: Int
+}
+
+input ListRecordsForResourceTypeInput {
+    awsAccountId: String! 
+    awsRegion: String!
+    resourceType: ResourceType!
+    nextToken: String
+    limit: Int
+}
+
+input ListRecordsForResourceInput {
+    awsAccountId: String! 
+    awsRegion: String!
+    resourceType: ResourceType!
+    resourceId: String!
+    nextToken: String
+    limit: Int
+}
+
+input ListRecordsForAccountInput {
+    awsAccountId: String!  
+    nextToken: String
+    limit: Int
+}
+
+input ListRecordsForRegionInput {
+    awsAccountId: String!
+    awsRegion: String!  
+    nextToken: String
+    limit: Int
+}
+
+input GetArtifactDownloadUrlInput {
+    id: ID! 
+    artifactId: ID!
+}
+
+input NotifyForensicTimelineEventInput {
+    id: ID!
+    forensicId: ID!
+    phase: ForensicsProcessingPhase!
+    name: String
+    description: String
+    componentId: String
+    componentType: String 
+    creationTime: AWSDateTime
+    artifact: NotifyForensicArtifactInput
+    eventData: AWSJSON
+}
+
+input SnapshotInput {
+    snapshotId: String
+    volumeId: String
+    volumeSize: Int
+    awsAccountId: String
+    region: String 
+}
+
+input VolumeInput {
+    volumeId: String
+    volumeSize: Int
+    awsAccountId: String
+    region: String
+}
+
+input FindingInput {
+    id: String
+    service: String
+    region: String
+}
+
+input NotifyForensicArtifactInput {
+    id: ID!
+    forensicId: ID!
+    category: ArtifactCategory
+    type: ArtifactType
+    status: ArtifactStatus
+    componentId: String 
+    componentType: String 
+    creationTime: String 
+    lastUpdatedTime: String 
+    snapshot: SnapshotInput
+    volume: VolumeInput       
+    inputArtifactCategory: ArtifactCategory
+    inputArtifactType: ArtifactType
+    inputArtifactId: String 
+    ssmDocumentName: String
+    ssmCommandId: String
+    artifactLocation: String 
+    artifactSize: Int
+    artifactSHA256: String
+}
+
+input NotifyForensicsProcessingStateChangeInput {
+    id: ID!
+    resourceType: ResourceType
+    resourceId: String
+    awsAccountId: String
+    awsRegion: String
+    creationTime: AWSDateTime
+    lastUpdatedTime: AWSDateTime
+    triageStatus: ForensicsProcessingPhase
+    triageStatusDescription: String
+    memoryAnalysisStatus: ForensicsProcessingPhase
+    memoryAnalysisStatusDescription: String
+    diskAnalysisStatus: ForensicsProcessingPhase
+    diskAnalysisStatusDescription: String
+    completionTime: AWSDateTime
+    resourceInfo: AWSJSON
+    sourceAccountSnapshots: [SnapshotInput]
+    forensicAccountSnapshots: [SnapshotInput]
+    forensicAccountVolumes: [VolumeInput] 
+    associatedFindings: [FindingInput]
+}
+
+input TimelineEventsForRecordInput {
+    id: ID! 
+    nextToken: String
+    limit: Int
+}
+
+input ArtifactsForRecordInput {
+    id: ID! 
+    nextToken: String 
+    limit: Int
+}
+
+type Query {
+    allForensicRecords(input: AllRecordsInput!): ForensicsRecords
+    listForensicRecordsForAccount(input: ListRecordsForAccountInput!): ForensicsRecords 
+    listForensicRecordsForRegion(input: ListRecordsForRegionInput!): ForensicsRecords
+    listForensicRecordsForResourceType(input: ListRecordsForResourceTypeInput!): ForensicsRecords
+    listForensicRecordsForResource(input: ListRecordsForResourceInput!): ForensicsRecords
+    getForensicRecord(id: ID!): ForensicsRecord
+    timelineEventsForRecord(input: TimelineEventsForRecordInput!): ForensicTimelineEvents 
+    artifactsForRecord(input: ArtifactsForRecordInput!): ForensicArtifacts
+    getArtifactDownloadUrl(input: GetArtifactDownloadUrlInput!): ArtifactDownloadUrl
+}
+
+type Mutation {
+    notifyForensicsRecordChange(input: NotifyForensicsProcessingStateChangeInput!): ForensicsRecord
+    @aws_iam
+    notifyNewForensicTimelineEvent(input: NotifyForensicTimelineEventInput!): ForensicTimelineEvent
+    @aws_iam
+    notifyNewOrUpdatedForensicArtifact(input: NotifyForensicArtifactInput!): ForensicArtifact  
+    @aws_iam
+}
+
+type Subscription {
+    forensicsRecordUpdates(id: ID!): ForensicsRecord
+    @aws_subscribe(mutations: ["notifyForensicsRecordChange"])
+    timelineEventUpdates(forensicId: ID!): ForensicTimelineEvent
+    @aws_subscribe(mutations: ["notifyNewForensicTimelineEvent"])
+    artifactUpdates(forensicId: ID!): ForensicArtifact
+    @aws_subscribe(mutations: ["notifyNewOrUpdatedForensicArtifact"])
+}
+
+schema {
+ query: Query
+ mutation: Mutation
+ subscription: Subscription
+}

@@ -1,0 +1,7 @@
+*.js
+!jest.config.js
+.coverage
+coverage.lcov
+coverage.xml-e
+__pycache__
+.DS_Store

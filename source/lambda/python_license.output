@@ -1,0 +1,22 @@
+Found dependencies: 18
+
+| Name                    | Meta               | Classifier                                         |
+|-------------------------|--------------------|----------------------------------------------------|
+| codeguru-profiler-agent |                    | OSI Approved::Apache Software License              |
+| charset-normalizer      | MIT                | OSI Approved::MIT License                          |
+| requests                | Apache 2.0         | OSI Approved::Apache Software License              |
+| python-dateutil         | Dual License       | OSI Approved::BSD License                          |
+| s3transfer              | Apache License 2.0 | OSI Approved::Apache Software License              |
+| boto3                   | Apache License 2.0 | OSI Approved::Apache Software License              |
+| jsonpickle              |                    | OSI Approved::BSD License                          |
+| botocore                | Apache License 2.0 | OSI Approved::Apache Software License              |
+| urllib3                 | MIT                | OSI Approved::MIT License                          |
+| wrapt                   | BSD                | OSI Approved::BSD License                          |
+| python2-secrets         |                    | OSI Approved::BSD License                          |
+| six                     | MIT                | OSI Approved::MIT License                          |
+| jmespath                | MIT                | OSI Approved::MIT License                          |
+| certifi                 | MPL-2.0            | OSI Approved::Mozilla Public License 2.0 (MPL 2.0) |
+| idna                    | BSD-3-Clause       | OSI Approved::BSD License                          |
+| aws-xray-sdk            | Apache License 2.0 | OSI Approved::Apache Software License              |
+| arnparse                |                    |                                                    |
+| future                  | MIT                | OSI Approved::MIT License                          |

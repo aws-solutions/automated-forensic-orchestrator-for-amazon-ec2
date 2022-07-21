@@ -1,0 +1,81 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Linux instances to create profile details",
+    "parameters": {
+        "s3bucket": {
+            "type": "String",
+            "description": "(Required) S3 bucket details.",
+            "default": "S3 Bucket Name"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details",
+            "default": "ap-southeast-2"
+        },
+        "ExecutionTimeout": {
+            "type": "String",
+            "description": "(Required) SSM document execution timeout (seconds)",
+            "default": "4000"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "{{ExecutionTimeout}}",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "cd /tmp",
+                    "mkdir -p forensic-tools-builder",
+                    "cd forensic-tools-builder",
+                    "sudo yum update -y",
+                    "sudo yum install git -y",
+                    "if [ `rpm -qa|grep awscli|wc -l` -eq 0 ]; then yum -y install awscli; fi",
+                    "if [ `lsmod|grep lime|wc -l` -gt 0 ]; then rmmod lime; fi",
+                    "yum install git -y",
+                    "kernel_name=$(uname -s)",
+                    "kernel_release=$(uname -r)",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "git clone https://github.com/504ensicsLabs/LiME",
+                    "zip -r LiME.zip LiME",
+                    "aws configure set default.s3.max_concurrent_requests 20",
+                    "aws s3 cp LiME.zip s3://{{s3bucket}}/tools/LiME/",
+                    "echo s3 copy of LiMe complete",
+                    "cd LiME",
+                    "cd src",
+                    "make",
+                    "aws s3 cp lime-$kernel_release.ko s3://{{s3bucket}}/tools/LiME/",
+                    "cd /tmp/forensic-tools-builder",
+                    "git clone https://github.com/volatilityfoundation/volatility.git",
+                    "zip -r volatility.zip volatility",
+                    "aws s3 cp volatility.zip s3://{{s3bucket}}/tools/volatility/",
+                    "echo s3 copy of volatility complete",
+                    "ls -ltr",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}

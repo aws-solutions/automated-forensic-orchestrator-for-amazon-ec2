@@ -1,0 +1,147 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Linux instance to perform memory acquisition",
+    "parameters": {
+        "s3ArtifactLocation": {
+            "type": "String",
+            "description": "(Required) Artifact upload location",
+            "default": "S3 Artifact Upload Location"
+        },
+
+        "s3bucket": {
+            "type": "String",
+            "description": "(Required) Lime ko file location",
+            "default": "S3 bucket Location"
+        },
+        "limePath": {
+            "type": "String",
+            "description": "(Optional) Path to the LiME Kernel module on disk. If not provided, LiME will be downloaded and built",
+            "default": ""
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details",
+            "default": "ap-southeast-2"
+        },
+        "ExecutionTimeout": {
+            "type": "String",
+            "description": "(Required) SSM document execution timeout (seconds)",
+            "default": "1800"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "loadLime",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "{{ExecutionTimeout}}",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "if [[ -e /usr/bin/yum ]] ; then",
+                    "    if [[ `rpm -qa|grep awscli|wc -l` -eq 0 ]] ; then ",
+                    "      sudo yum -y install awscli",
+                    "    fi",
+                    "else",
+                    "    if [[ `dpkg -l|grep awscli|wc -l` -eq 0 ]] ; then ",
+                    "      DEBIAN_FRONTEND=noninteractive",
+                    "      sudo apt-get -y install awscli",
+                    "    fi",
+                    "fi",
+                    "if [[ `lsmod|grep lime|wc -l` -gt 0 ]] ; then ",
+                    "    sudo rmmod lime.ko",
+                    "fi",
+                    "kernel_release=$(uname -r)",
+                    "kernel_name=$(uname -s)",
+                    "installLimeYum() {",
+                    "    sudo yum check-update -y",
+                    "    sudo yum install git -y",
+                    "    sudo yum install kernel-devel-$1 -y",
+                    "    cd /tmp && sudo rm -rf LiME",
+                    "    git clone https://github.com/504ensicsLabs/LiME",
+                    "    cd LiME/src",
+                    "    make",
+                    "    lime_path=$(pwd)/lime-$1.ko",
+                    "}",
+                    "installLimeApt() {",
+                    "    export DEBIAN_FRONTEND=noninteractive",
+                    "    sudo apt-get -y update",
+                    "    sudo apt-get -y install git",
+                    "    sudo apt-get install -y linux-headers-$1",
+                    "    sudo apt-get install -y build-essential",
+                    "    cd /tmp && sudo rm -rf LiME",
+                    "    git clone https://github.com/504ensicsLabs/LiME",
+                    "    cd LiME/src",
+                    "    make",
+                    "    lime_path=$(pwd)/lime-$1.ko",
+                    "}",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "mkdir -p /tmp/forensic_tools",
+                    "cd /tmp/forensic_tools",
+                    "aws s3 cp s3://{{s3bucket}}/tools/LiME/lime-$kernel_release.ko .",
+                    "if [[ `ls -A $(pwd)` ]]; then",
+                    "    lime_path=$(pwd)/lime-$kernel_release.ko",
+                    "    echo successfully downloaded from S3",
+                    "    echo $lime_path",
+                    "else",
+                    "  if [[ -n \"{{limePath}}\" ]] ; then",
+                    "      if [[ -f \"{{limePath}}\" ]] ; then ",
+                    "        lime_path={{limePath}}",
+                    "      else",
+                    "        if [[ -e /usr/bin/yum ]] ; then ",
+                    "          installLimeYum $kernel_release",
+                    "        else",
+                    "          installLimeApt $kernel_release",
+                    "        fi",
+                    "      fi",
+                    "  else",
+                    "      if [[ -e /usr/bin/yum ]] ; then ",
+                    "        installLimeYum $kernel_release",
+                    "      else",
+                    "        installLimeApt $kernel_release",
+                    "      fi",
+                    "  fi",
+                    "fi",
+                    "    echo $lime_path",
+                    "sudo insmod $lime_path \"path=tcp:4444 format=lime localhostonly=1\" &",
+                    "sleep 120",
+                    "if [[ `lsmod|grep lime|wc -l` -gt 0 ]] ; then ",
+                    "    echo \"LiME has been loaded\" >&2",
+                    "fi",
+                    "aws configure set default.s3.max_concurrent_requests 20",
+                    "s3cp() {",
+                    "    aws s3 cp - {{s3ArtifactLocation}}/linux_memcapture$1 $2 $3 $4",
+                    "}",
+                    "MEMSIZE=`awk '/MemTotal/ {print $2/1024/1024}' /proc/meminfo`",
+                    "S3_EXPECTED_SIZE=`awk '/MemTotal/ {print $2*1024}' /proc/meminfo`",
+                    "ACL_FLAG=\"--acl bucket-owner-full-control\"",
+                    "METADATA_FLAG=\"--metadata uncompressed-size=$MEMSIZE,kernel-name=$kernel_name,kernel-release=$kernel_release\"",
+                    "EXPECTED_SIZE_FLAG=\"--expected-size $S3_EXPECTED_SIZE\"",
+                    "cat < /dev/tcp/127.0.0.1/4444 | tee >(gzip | s3cp \".lime.gz\" \"$EXPECTED_SIZE_FLAG\" \"$METADATA_FLAG\" \"$ACL_FLAG\") | sha256sum | s3cp \"_sha256.txt\" \"$ACL_FLAG\"",
+                    "sudo rmmod lime.ko",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}
