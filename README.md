@@ -60,7 +60,7 @@ _Tools_
 
 7. To deploy the Forensic Stack in the Forensic AWS Account:
 
-    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=us-east-1 --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
+    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=<<Forensic Deployment AWS Region>> --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
 
     Example:
 
@@ -86,7 +86,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
     3. `npm run build:collector`
 5. To build the Forensic Stack to be deployed in the SecurityHub Aggregator account:
 
-    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=us-east-1 -c sechubregion=us-east-1 -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
+    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=<<Forensic Deployment AWS Region>> -c sechubregion=<<SecuirtyHub AWS Region>> -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
 
     Example:
 
@@ -94,7 +94,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
 
 6. To deploy the Forensic Stack in the SecurityHub Aggregator account:
 
-    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=us-east-1 --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
+    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=<<SecuirtyHub AWS Region>> --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
     Example:
 
@@ -138,7 +138,7 @@ Deploy the following cloud formation template in Application account to establis
     3. `npm run build:collector`
 7.  To build the Forensic Stack to be deployed in the Forensic AWS Account:
 
-    `cdk synth -c account=<<Forensic AWS Account>> -c region=<<region>> -c secHubAccount=<<SecuHub Aggregator Account>> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
+    `cdk synth -c account=<<Forensic AWS Account>> -c region=<<Forensic Deployment AWS Region>> -c secHubAccount=<<SecuHub Aggregator Account>> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
 
     Example:
 
@@ -146,7 +146,7 @@ Deploy the following cloud formation template in Application account to establis
 
 8.  To deploy the Forensic Stack in the Forensic AWS Account:
 
-    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=ap-southeast-2 --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
+    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=<<Forensic Deployment AWS Region>> --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
 
     Example:
 
@@ -180,7 +180,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
     3. `npm run build:collector`
 6.  To build the Forensic Stack to be deployed in SecurityHub Aggregator account:
 
-    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=ap-southeast-2 -c sechubregion=ap-southeast-2 -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
+    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=<<Forensic Deployment AWS Region>> -c sechubregion=<<Security Hub Region>> -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
 
     Example:
 
@@ -188,7 +188,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
 
 7.  To deploy the Forensic Stack loyed in SecurityHub Aggregator account:
 
-    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=ap-southeast-2 --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
+    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=<<Security Hub Region>> --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
     Example:
 
@@ -300,16 +300,16 @@ This solution collects anonymous operational metrics to help AWS improve the qua
 -   `cdk synth` Emits the synthesized CloudFormation template
 -   Steps to build the Forensic Stack to be deployed in Forensic AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=forensicAccount` - Sets the environment variable as forensic Account to build the necessary CDK CFN templates for deploying forensic stack
-    -   `cdk synth -c account=<<Forensic AWS Account>> -c region=ap-southeast-2` build the necessary CDK CFN templates for deploying forensic stack
+    -   `cdk synth -c account=<<Forensic AWS Account>> -c region=<<Forensic AWS Region>>` build the necessary CDK CFN templates for deploying forensic stack
 -   Steps to build the Forensic Stack to be deployed in SecurityHub AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=securityHubAccount` - Sets the environment variable as SecurityHubAccount Account to build the necessary CDK CFN templates for deploying SecurityHub stack
-    -   `cdk synth -c account=<<SecuirtyHub AWS Account>> -c region=ap-southeast-2` Build the necessary CDK CFN templates for deploying SecurityHub stack
+    -   `cdk synth -c account=<<SecuirtyHub AWS Account>> -c region=<<Security Hub Region>>` Build the necessary CDK CFN templates for deploying SecurityHub stack
 -   Steps to deploy the Forensic Stack in Forensic AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=forensicAccount` - Sets the environment variable as forensic Account to build the necessary CDK CFN templates for deploying forensic stack
-    -   `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=ap-southeast-2 --require-approval=never -c secHubAccount=<<SecuirtyHub AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
+    -   `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=<<Forensic AWS Region>> --require-approval=never -c secHubAccount=<<SecuirtyHub AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
 -   Steps to deploy the Forensic Stack in SecurityHub AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=securityHubAccount` - Sets the environment variable as SecurityHubAccount Account to build the necessary CDK CFN templates for deploying SecurityHub stack
-    -   `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=ap-southeast-2 --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
+    -   `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=<<Security Hub Region>> --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
 ---
 ```
