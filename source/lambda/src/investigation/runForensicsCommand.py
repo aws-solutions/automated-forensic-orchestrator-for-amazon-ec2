@@ -21,6 +21,7 @@ from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import AWSCachedClient, create_aws_client
 from ..common.common import clean_date_format, create_response
+from ..common.exception import InvestigationError
 from ..common.log import get_logger
 from ..data.datatypes import ForensicsProcessingPhase
 from ..data.service import ForensicDataService
@@ -185,4 +186,4 @@ def handler(event, _):
         output_body["errorComponentType"] = "Lambda"
         output_body["eventData"] = exception_message.replace('"', "-")
 
-        raise RuntimeError(output_body)
+        raise InvestigationError(output_body)

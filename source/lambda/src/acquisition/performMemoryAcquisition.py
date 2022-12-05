@@ -22,6 +22,7 @@ from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import clean_date_format, create_response
+from ..common.exception import MemoryAcquisitionError
 from ..common.log import get_logger
 from ..data.datatypes import ForensicCategory, ForensicsProcessingPhase
 from ..data.service import ForensicDataService
@@ -246,4 +247,4 @@ def handler(event, context):
         output_body["errorComponentType"] = "Lambda"
         output_body["eventData"] = exception_message.replace('"', "-")
 
-        raise RuntimeError(output_body)
+        raise MemoryAcquisitionError(output_body)

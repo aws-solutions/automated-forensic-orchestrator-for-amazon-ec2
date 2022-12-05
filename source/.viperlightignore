@@ -11,3 +11,13 @@ ssm-documents/linux_lime-memory-acquisition.json
 ssm-documents/windows-lime-memory-acquisition.json
 ssm-documents/amazon-linux-2-lime-volatility-loader.json
 lambda/src/common/awsapi_cached_client.py
+
+
+[python-pipoutdated]
+flake8=4.0.1
+pytest-cov=3.0.0
+types-requests=2.27.11
+aws-xray-sdk=2.4.3
+black=22.1.0
+mkdocs=1.2.3
+mypy=0.930.0

@@ -72,6 +72,8 @@ export const HYPHEN = /-/gi;
 
 export const OS_TYPES = { LINUX: 'Linux' };
 
+export const FORENSIC_ISOLATION_PROFILE_NAME = 'ForensicIsolationInstanceProfileName';
+
 export interface ImageBuilderComponent {
     name: string;
     data: string;

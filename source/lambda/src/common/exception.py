@@ -13,9 +13,34 @@
 #  or implied. See the License for the specific language governing permis-    #
 #  sions and limitations under the License.                                   #
 ###############################################################################
+import json
 
 
 class ForensicLambdaExecutionException(Exception):
     """Forensic Lambda Execution Exception"""
+
+    pass
+
+
+class ForensicExecutionException(Exception):
+    def __init__(self, error_content: dict) -> None:
+        error_content_str = json.dumps(error_content)
+        super().__init__(error_content_str)
+
+
+class MemoryAcquisitionError(ForensicExecutionException):
+    """Forensic Lambda Execution Exception Memory Acquisition failed"""
+
+    pass
+
+
+class DiskAcquisitionError(ForensicExecutionException):
+    """Forensic Lambda Execution Exception Disk Acquisition failed"""
+
+    pass
+
+
+class InvestigationError(ForensicExecutionException):
+    """Forensic Lambda Execution Exception Disk Acquisition failed"""
 
     pass

@@ -110,7 +110,7 @@ export class PythonLambdaConstruct extends Construct {
             tracing: Tracing.ACTIVE,
             role: functionRole,
             securityGroups: [this.defaultSecurityGroup],
-            vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             layers: [
                 this.createDependencyLayer(id, props.applicationName),
                 ...(props.layers ?? []),

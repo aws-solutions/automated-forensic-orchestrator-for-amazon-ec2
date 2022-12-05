@@ -30,8 +30,8 @@ show:             ## Show the current environment.
 
 .PHONY: check-py-version
 check-py-version:
-	@echo "python version require to be at least 3.8.0. Leverage pyenv to set up python environment"
-	$(ENV_PREFIX)python -c "import sys;exit(0) if sys.version_info.major == 3 and sys.version_info.minor >= 8  else exit(-1)"
+	@echo "python version require to be at least 3.9.0. Leverage pyenv to set up python environment"
+	$(ENV_PREFIX)python -c "import sys; print(sys.version_info); exit(0) if sys.version_info.major == 3 and sys.version_info.minor >= 9  else exit(-1)"
 	
 	
 .PHONY: install
@@ -52,6 +52,11 @@ fmt: bandit              ## Format code using black & isort.
 lint: fmt         ## Run pep8, black, mypy linters.
 	$(ENV_PREFIX)flake8 lambda/src/
 	$(ENV_PREFIX)mypy lambda/src/  --exclude tests/  --exclude lambda/src/common/awsapi_cached_client.py
+	
+.PHONY:	lint-strict
+lint-strict: lint
+	# use stricter linting to find more issues
+	$(ENV_PREFIX)pylint lambda/src/
 
 .PHONY: bandit
 bandit:          ## Run pep8, black, mypy linters.

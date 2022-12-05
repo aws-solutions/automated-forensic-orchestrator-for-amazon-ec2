@@ -51,17 +51,17 @@ const defaultSubnetConfiguration = [
     {
         cidrMask: 24,
         name: 'service',
-        subnetType: SubnetType.PRIVATE_WITH_NAT,
+        subnetType: SubnetType.PRIVATE_WITH_EGRESS,
     },
     {
         cidrMask: 24,
         name: 'database',
-        subnetType: SubnetType.PRIVATE_ISOLATED,
+        subnetType: SubnetType.PRIVATE_WITH_EGRESS,
     },
     {
         cidrMask: 24,
         name: 'internalDMZ',
-        subnetType: SubnetType.PRIVATE_ISOLATED,
+        subnetType: SubnetType.PRIVATE_WITH_EGRESS,
     },
 ];
 
@@ -151,7 +151,7 @@ export class InfraConfig extends Construct {
             lookupSupportedAzs: false,
             open: true,
             privateDnsEnabled: true,
-            subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             securityGroups: [vpcEndPointSecurityGroup],
         });
         ec2Endpoint.node.addDependency(vpc);
@@ -162,7 +162,7 @@ export class InfraConfig extends Construct {
             lookupSupportedAzs: false,
             open: true,
             privateDnsEnabled: true,
-            subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             securityGroups: [vpcEndPointSecurityGroup],
         });
         ssmEndpoint.node.addDependency(vpc);
@@ -176,7 +176,7 @@ export class InfraConfig extends Construct {
                 lookupSupportedAzs: false,
                 open: true,
                 privateDnsEnabled: true,
-                subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+                subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
                 securityGroups: [vpcEndPointSecurityGroup],
             }
         );
@@ -191,7 +191,7 @@ export class InfraConfig extends Construct {
                 lookupSupportedAzs: false,
                 open: true,
                 privateDnsEnabled: true,
-                subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+                subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
                 securityGroups: [vpcEndPointSecurityGroup],
             }
         );
@@ -203,7 +203,7 @@ export class InfraConfig extends Construct {
             lookupSupportedAzs: false,
             open: true,
             privateDnsEnabled: true,
-            subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             securityGroups: [vpcEndPointSecurityGroup],
         });
 
@@ -215,7 +215,7 @@ export class InfraConfig extends Construct {
             lookupSupportedAzs: false,
             open: true,
             privateDnsEnabled: true,
-            subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             securityGroups: [vpcEndPointSecurityGroup],
         });
 
@@ -227,7 +227,7 @@ export class InfraConfig extends Construct {
             lookupSupportedAzs: false,
             open: true,
             privateDnsEnabled: true,
-            subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             securityGroups: [vpcEndPointSecurityGroup],
         });
         kmsEndpoint.node.addDependency(vpc);
@@ -241,7 +241,7 @@ export class InfraConfig extends Construct {
                 lookupSupportedAzs: false,
                 open: true,
                 privateDnsEnabled: true,
-                subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+                subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
                 securityGroups: [vpcEndPointSecurityGroup],
             }
         );
@@ -253,7 +253,7 @@ export class InfraConfig extends Construct {
             lookupSupportedAzs: false,
             open: true,
             privateDnsEnabled: true,
-            subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             securityGroups: [vpcEndPointSecurityGroup],
         });
         cwEndpoint.node.addDependency(vpc);
@@ -264,7 +264,7 @@ export class InfraConfig extends Construct {
             lookupSupportedAzs: false,
             open: true,
             privateDnsEnabled: true,
-            subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+            subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
             securityGroups: [vpcEndPointSecurityGroup],
         });
 
@@ -280,7 +280,7 @@ export class InfraConfig extends Construct {
                 lookupSupportedAzs: false,
                 open: true,
                 privateDnsEnabled: true,
-                subnets: { subnetType: SubnetType.PRIVATE_WITH_NAT },
+                subnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
                 securityGroups: [vpcEndPointSecurityGroup],
             }
         );

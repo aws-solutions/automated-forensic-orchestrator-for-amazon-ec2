@@ -33,20 +33,16 @@ def handler(event, _):
     """
     Lambda function handler for Send notification
     """
+    logger.info("Got event{}".format(event))
     logger.info("Sending error notification for forensic process")
 
-    cause = event.get("Cause")
+    cause = json.loads(event.get("Cause"))
+    logger.info(f"Got cause {cause}")
+    error_message = json.loads(cause["errorMessage"])
 
-    error_message = json.loads(cause)["errorMessage"]
+    logger.info(f"Got errorMessage {error_message}")
 
-    error_message = (
-        error_message.replace("'", '"')
-        .replace("True", '"True"')
-        .replace("False", '"False"')
-        .replace("null", '"null"')
-    )
-
-    input_body = json.loads(error_message)
+    input_body = error_message
 
     fds = ForensicDataService(
         ddb_client=create_aws_client("dynamodb"),

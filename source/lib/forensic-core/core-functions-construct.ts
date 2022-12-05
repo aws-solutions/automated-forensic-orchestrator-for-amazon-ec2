@@ -16,17 +16,27 @@
 import { Stack } from 'aws-cdk-lib';
 import { Dashboard } from 'aws-cdk-lib/aws-cloudwatch';
 import { ITable } from 'aws-cdk-lib/aws-dynamodb';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { IVpc, SecurityGroup } from 'aws-cdk-lib/aws-ec2';
-import { Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import {
+    CfnInstanceProfile,
+    Effect,
+    ManagedPolicy,
+    PolicyStatement,
+    Role,
+    ServicePrincipal,
+} from 'aws-cdk-lib/aws-iam';
 import { IKey } from 'aws-cdk-lib/aws-kms';
 import { IFunction } from 'aws-cdk-lib/aws-lambda';
 import { ITopic } from 'aws-cdk-lib/aws-sns';
+import { IQueue } from 'aws-cdk-lib/aws-sqs';
 import { Construct } from 'constructs';
 import { PythonLambdaConstruct } from '../infra-utils/aws-python-lambda-construct';
-import { APP_ACCOUNT_ASSUME_ROLE_NAME } from '../infra-utils/infra-types';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import { IQueue } from 'aws-cdk-lib/aws-sqs';
 import { addIsolationCfnSecurityGroup } from '../infra-utils/cfn-nag-suppression';
+import {
+    APP_ACCOUNT_ASSUME_ROLE_NAME,
+    FORENSIC_ISOLATION_PROFILE_NAME,
+} from '../infra-utils/infra-types';
 
 export interface ForensicsCoreProps {
     forensicDeadLetterQueue: IQueue;
@@ -118,6 +128,12 @@ export class ForensicsCore extends Construct {
                     'ec2:ModifySecurityGroupRules',
                     'ec2:UpdateSecurityGroupRuleDescriptionsIngress',
                     'ec2:UpdateSecurityGroupRuleDescriptionsEgress',
+                    'ec2:ModifyInstanceAttribute',
+                    'ec2:AssociateIamInstanceProfile',
+                    'ec2:DescribeIamInstanceProfileAssociations',
+                    'ec2:ReplaceIamInstanceProfileAssociation',
+                    'ec2:DescribeAddresses',
+                    'ec2:DisassociateAddress',
                 ],
                 resources: [`arn:aws:ec2:${Stack.of(this).region}:*:*`],
             }),
@@ -128,10 +144,46 @@ export class ForensicsCore extends Construct {
                     `arn:aws:ec2:${Stack.of(this).region}:*:security-group-rule/*`,
                 ],
             }),
+            new PolicyStatement({
+                effect: Effect.ALLOW,
+                actions: ['iam:GetInstanceProfile'],
+                resources: [`arn:aws:iam::${Stack.of(this).account}:instance-profile/*`],
+            }),
+            new PolicyStatement({
+                effect: Effect.ALLOW,
+                actions: ['iam:PutRolePolicy'],
+                resources: [`arn:aws:iam::${Stack.of(this).account}:role/*`],
+            }),
         ];
         //-------------------------------------------------------------------------
         // Lambda - lambda function isolate the compromised instance by attaching securitygroups with no egress and ingress
         //-------------------------------------------------------------------------
+        const isolationInstanceRole = new Role(this, 'IsolationInstanceRole', {
+            assumedBy: new ServicePrincipal('ec2.amazonaws.com'),
+            path: '/',
+        });
+        isolationInstanceRole.addManagedPolicy(
+            ManagedPolicy.fromAwsManagedPolicyName('AWSDenyAll')
+        );
+
+        //Builds the instance Profile to be attached to EC2 instance created during image building
+        const solutionAccountIsolationProfileName = `ForensicIsolationInstanceProfile-${
+            Stack.of(this).region
+        }`;
+        const isolationProfile = new CfnInstanceProfile(
+            this,
+            'ForensicIsolationInstanceProfile',
+            {
+                roles: [isolationInstanceRole.roleName],
+                instanceProfileName: `ForensicIsolationInstanceProfile-${
+                    Stack.of(this).region
+                }`,
+            }
+        );
+
+        const isolationProfileName =
+            this.node.tryGetContext(FORENSIC_ISOLATION_PROFILE_NAME) ||
+            'ForensicIsolationInstanceProfile';
         this.isolationLambda = new PythonLambdaConstruct(
             this,
             'IsolateForensicInstance',
@@ -148,6 +200,9 @@ export class ForensicsCore extends Construct {
                     APP_ACCOUNT_ROLE: `${APP_ACCOUNT_ASSUME_ROLE_NAME}-${
                         Stack.of(this).region
                     }`,
+                    FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME: isolationProfileName,
+                    SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME:
+                        solutionAccountIsolationProfileName,
                 },
                 skipCodeSigning: true,
                 initialPolicy: [...additionalPolicies, ...isolationPolicies],
@@ -156,7 +211,9 @@ export class ForensicsCore extends Construct {
                 deadLetterQueue: props.forensicDeadLetterQueue,
             }
         ).function;
+        this.isolationLambda.role?.grantPassRole(isolationInstanceRole);
         props.instanceTable.grantReadWriteData(this.isolationLambda);
+        isolationProfile.node.addDependency(this.isolationLambda);
 
         if (props.forensicApiResources) {
             additionalPolicies.push(

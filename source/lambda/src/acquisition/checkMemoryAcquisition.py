@@ -21,7 +21,10 @@ from aws_xray_sdk.core import xray_recorder
 from ..common.aws_utils import resolve_artifact_metadata
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import create_response
-from ..common.exception import ForensicLambdaExecutionException
+from ..common.exception import (
+    ForensicLambdaExecutionException,
+    MemoryAcquisitionError,
+)
 from ..common.log import get_logger
 from ..data.datatypes import (
     ArtifactCategory,
@@ -153,7 +156,7 @@ def handler(event, context):
                 "CommandInputArtifactId"
             ] = artifact_id
 
-        elif not ssm_response.get("StatusDetails", None) in ["Success"]:
+        elif ssm_response.get("StatusDetails", None) not in ["Success"]:
             raise ForensicLambdaExecutionException(
                 "Job execution failed. {}".format(
                     ssm_response.get("StatusDetails", None)
@@ -183,4 +186,4 @@ def handler(event, context):
         output_body["errorComponentType"] = "Lambda"
         output_body["eventData"] = exception_message.replace('"', "-")
 
-        raise RuntimeError(output_body)
+        raise MemoryAcquisitionError(output_body)

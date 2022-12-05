@@ -76,8 +76,6 @@ export class MemoryAcquisitionConstruct extends Construct {
             }
         );
 
-        runMemoryAcquisitionStep.addCatch(memoryAcquisitionFailedChain);
-
         const checkMemoryAcquisitionCompletion = new LambdaInvoke(
             this,
             'Check for Memory Forensics Acquisition to be completed',
@@ -96,6 +94,8 @@ export class MemoryAcquisitionConstruct extends Construct {
             this,
             'Is Forensic Isolation Needed'
         );
+
+        runMemoryAcquisitionStep.addCatch(isForensicIsolationNeeded);
 
         const waitState = new Wait(this, 'Wait for Memory Acquisition to be completed', {
             time: WaitTime.duration(Duration.seconds(environmentValues.WAIT_STATE_TIME)),
@@ -130,9 +130,23 @@ export class MemoryAcquisitionConstruct extends Construct {
                                 ),
                                 isForensicIsolationNeeded
                                     .when(
-                                        Condition.booleanEquals(
-                                            '$.Payload.body.isIsolationNeeded',
-                                            true
+                                        Condition.or(
+                                            Condition.and(
+                                                Condition.isPresent('$.Error'),
+                                                Condition.stringEquals(
+                                                    '$.Error',
+                                                    'MemoryAcquisitionError'
+                                                )
+                                            ),
+                                            Condition.and(
+                                                Condition.isPresent(
+                                                    '$.Payload.body.isIsolationNeeded'
+                                                ),
+                                                Condition.booleanEquals(
+                                                    '$.Payload.body.isIsolationNeeded',
+                                                    true
+                                                )
+                                            )
                                         ),
                                         triggerForensicsIsolation.next(investigationTask)
                                     )

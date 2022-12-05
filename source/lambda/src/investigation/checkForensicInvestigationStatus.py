@@ -21,7 +21,10 @@ from aws_xray_sdk.core import xray_recorder
 from ..common.aws_utils import resolve_artifact_metadata
 from ..common.awsapi_cached_client import AWSCachedClient, create_aws_client
 from ..common.common import create_response
-from ..common.exception import ForensicLambdaExecutionException
+from ..common.exception import (
+    ForensicLambdaExecutionException,
+    InvestigationError,
+)
 from ..common.log import get_logger
 from ..data.datatypes import (
     ArtifactCategory,
@@ -69,149 +72,25 @@ def handler(event, _):
             )
         )
         if ForensicCategory.MEMORY.value in input_body["forensicType"]:
-            command_id = input_body["MemoryInvestigation"]["CommandId"]
-            command_id_artifact_map = input_body["MemoryInvestigation"][
-                "CommandIdArtifactMap"
-            ]
-            prefix = command_id_artifact_map[command_id]["Prefix"]
-            ssm_document_name = command_id_artifact_map[command_id][
-                "SSMDocumentName"
-            ]
-            input_artifact_id = command_id_artifact_map[command_id][
-                "CommandInputArtifactId"
-            ]
-
-            ssm_response = ssmclient.get_command_invocation(
-                CommandId=command_id,
-                InstanceId=input_body["ForensicInvestigationInstanceId"],
+            memory_investigation(
+                ssmclient,
+                s3_bucket_name,
+                s3_client,
+                fds,
+                input_body,
+                forensic_id,
+                output_body,
             )
-            logger.info(input_body)
-            if ssm_response.get("StatusDetails", None) in [
-                "Pending",
-                "Delayed",
-                "InProgress",
-            ]:
-                output_body["forensicAnalysisComplete"] = "FALSE"
-            elif ssm_response.get("StatusDetails", None) == "Success":
-                output_body["forensicAnalysisComplete"] = "SUCCESS"
-
-                artifact_metadata = resolve_artifact_metadata(
-                    s3_client, s3_bucket_name, prefix
-                )
-
-                for artifact in artifact_metadata:
-                    fds.create_forensic_artifact(
-                        id=forensic_id,
-                        phase=ForensicsProcessingPhase.INVESTIGATION,
-                        category=ArtifactCategory.MEMORY,
-                        type=ArtifactType.MEMORYANALYSIS,
-                        status=ArtifactStatus.SUCCESS,
-                        component_id="checkForensicInvestigationStatus",
-                        component_type="Lambda",
-                        ssm_document_name=ssm_document_name,
-                        ssm_command_id=command_id,
-                        input_artifact_category=ArtifactCategory.MEMORY,
-                        input_artifact_type=ArtifactType.MEMORYDUMP,
-                        input_artifact_id=input_artifact_id,
-                        artifact_location=artifact.get("artifact_location"),
-                        artifact_size=artifact.get("artifact_size"),
-                        artifact_SHA256=artifact.get("sha256"),
-                    )
-
-                fds.update_forensic_record_phase_status(
-                    id=forensic_id,
-                    memory=(
-                        ForensicsProcessingPhase.SUCCESS,
-                        "Completed forensic Memory analysis",
-                    ),
-                )
-
-            elif not ssm_response.get("StatusDetails", None) in ["Success"]:
-                raise ForensicLambdaExecutionException(
-                    "Job execution failed. {}".format(
-                        ssm_response.get("StatusDetails", None)
-                    )
-                )
         else:
-            command_list = input_body["ssmCommandList"]
-            command_id_artifact_map = input_body["CommandIdArtifactMap"]
-
-            logger.info(command_list)
-            succeeded = []
-
-            for command_id in command_list:
-                ssm_response = ssmclient.get_command_invocation(
-                    CommandId=command_id,
-                    InstanceId=input_body["ForensicInvestigationInstanceId"],
-                )
-                logger.info(ssm_response)
-                if ssm_response.get("StatusDetails", None) in [
-                    "Pending",
-                    "Delayed",
-                    "InProgress",
-                ]:
-                    output_body["forensicAnalysisComplete"] = "FALSE"
-                    break
-                elif ssm_response.get("StatusDetails", None) == "Success":
-                    succeeded.append(command_id)
-
-                    output_body["forensicAnalysisComplete"] = "SUCCESS"
-
-                    artifact_location_prefix = command_id_artifact_map[
-                        command_id
-                    ]["Prefix"]
-                    ssm_document_name = command_id_artifact_map[command_id][
-                        "SSMDocumentName"
-                    ]
-                    input_artifact_id = command_id_artifact_map[command_id][
-                        "CommandInputArtifactId"
-                    ]
-
-                    artifact_metadata = resolve_artifact_metadata(
-                        s3_client, s3_bucket_name, artifact_location_prefix
-                    )
-
-                    for artifact in artifact_metadata:
-                        fds.create_forensic_artifact(
-                            id=forensic_id,
-                            phase=ForensicsProcessingPhase.INVESTIGATION,
-                            category=ArtifactCategory.DISK,
-                            type=ArtifactType.DISKANALYSIS,
-                            status=ArtifactStatus.SUCCESS,
-                            component_id="checkForensicInvestigationStatus",
-                            component_type="Lambda",
-                            ssm_document_name=ssm_document_name,
-                            ssm_command_id=command_id,
-                            input_artifact_category=ArtifactCategory.DISK,
-                            input_artifact_type=ArtifactType.EC2VOLUME,
-                            input_artifact_id=input_artifact_id,
-                            artifact_location=artifact.get(
-                                "artifact_location"
-                            ),
-                            artifact_size=artifact.get("artifact_size"),
-                            artifact_SHA256=artifact.get("sha256"),
-                        )
-
-                elif not ssm_response.get("StatusDetails", None) in [
-                    "Success"
-                ]:
-                    logger.error(ssm_response)
-                    raise ForensicLambdaExecutionException(
-                        "Job execution failed. {}".format(
-                            ssm_response.get("StatusDetails", None)
-                        )
-                    )
-
-            logger.info(command_list)
-            logger.info(succeeded)
-            if len(succeeded) == len(command_list):
-                fds.update_forensic_record_phase_status(
-                    id=forensic_id,
-                    disk=(
-                        ForensicsProcessingPhase.SUCCESS,
-                        "Completed forensic disk analysis",
-                    ),
-                )
+            disk_investigation(
+                ssmclient,
+                s3_bucket_name,
+                s3_client,
+                fds,
+                input_body,
+                forensic_id,
+                output_body,
+            )
 
         return create_response(200, output_body)
 
@@ -234,4 +113,180 @@ def handler(event, _):
         output_body["errorComponentType"] = "Lambda"
         output_body["eventData"] = exception_message.replace('"', "-")
 
-        raise RuntimeError(output_body)
+        raise InvestigationError(output_body)
+
+
+def disk_investigation(
+    ssmclient,
+    s3_bucket_name,
+    s3_client,
+    fds,
+    input_body,
+    forensic_id,
+    output_body,
+):
+    command_list = input_body["ssmCommandList"]
+    command_id_artifact_map = input_body["CommandIdArtifactMap"]
+
+    logger.info(command_list)
+    succeeded = []
+
+    for command_id in command_list:
+        ssm_response = ssmclient.get_command_invocation(
+            CommandId=command_id,
+            InstanceId=input_body["ForensicInvestigationInstanceId"],
+        )
+        logger.info(ssm_response)
+        if ssm_response.get("StatusDetails", None) in [
+            "Pending",
+            "Delayed",
+            "InProgress",
+        ]:
+            output_body["forensicAnalysisComplete"] = "FALSE"
+            break
+        elif ssm_response.get("StatusDetails", None) == "Success":
+            handle_successful_execution(
+                s3_bucket_name,
+                s3_client,
+                fds,
+                forensic_id,
+                output_body,
+                command_id_artifact_map,
+                succeeded,
+                command_id,
+            )
+
+        elif ssm_response.get("StatusDetails", None) not in ["Success"]:
+            logger.error(ssm_response)
+            raise ForensicLambdaExecutionException(
+                "Job execution failed. {}".format(
+                    ssm_response.get("StatusDetails", None)
+                )
+            )
+
+    logger.info(command_list)
+    logger.info(succeeded)
+    if len(succeeded) == len(command_list):
+        fds.update_forensic_record_phase_status(
+            id=forensic_id,
+            disk=(
+                ForensicsProcessingPhase.SUCCESS,
+                "Completed forensic disk analysis",
+            ),
+        )
+
+
+def handle_successful_execution(
+    s3_bucket_name,
+    s3_client,
+    fds,
+    forensic_id,
+    output_body,
+    command_id_artifact_map,
+    succeeded,
+    command_id,
+):
+    succeeded.append(command_id)
+
+    output_body["forensicAnalysisComplete"] = "SUCCESS"
+
+    artifact_location_prefix = command_id_artifact_map[command_id]["Prefix"]
+    ssm_document_name = command_id_artifact_map[command_id]["SSMDocumentName"]
+    input_artifact_id = command_id_artifact_map[command_id][
+        "CommandInputArtifactId"
+    ]
+
+    artifact_metadata = resolve_artifact_metadata(
+        s3_client, s3_bucket_name, artifact_location_prefix
+    )
+
+    for artifact in artifact_metadata:
+        fds.create_forensic_artifact(
+            id=forensic_id,
+            phase=ForensicsProcessingPhase.INVESTIGATION,
+            category=ArtifactCategory.DISK,
+            type=ArtifactType.DISKANALYSIS,
+            status=ArtifactStatus.SUCCESS,
+            component_id="checkForensicInvestigationStatus",
+            component_type="Lambda",
+            ssm_document_name=ssm_document_name,
+            ssm_command_id=command_id,
+            input_artifact_category=ArtifactCategory.DISK,
+            input_artifact_type=ArtifactType.EC2VOLUME,
+            input_artifact_id=input_artifact_id,
+            artifact_location=artifact.get("artifact_location"),
+            artifact_size=artifact.get("artifact_size"),
+            artifact_SHA256=artifact.get("sha256"),
+        )
+
+
+def memory_investigation(
+    ssmclient,
+    s3_bucket_name,
+    s3_client,
+    fds,
+    input_body,
+    forensic_id,
+    output_body,
+):
+    command_id = input_body["MemoryInvestigation"]["CommandId"]
+    command_id_artifact_map = input_body["MemoryInvestigation"][
+        "CommandIdArtifactMap"
+    ]
+    prefix = command_id_artifact_map[command_id]["Prefix"]
+    ssm_document_name = command_id_artifact_map[command_id]["SSMDocumentName"]
+    input_artifact_id = command_id_artifact_map[command_id][
+        "CommandInputArtifactId"
+    ]
+
+    ssm_response = ssmclient.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=input_body["ForensicInvestigationInstanceId"],
+    )
+    logger.info(input_body)
+    if ssm_response.get("StatusDetails", None) in [
+        "Pending",
+        "Delayed",
+        "InProgress",
+    ]:
+        output_body["forensicAnalysisComplete"] = "FALSE"
+    elif ssm_response.get("StatusDetails", None) == "Success":
+        output_body["forensicAnalysisComplete"] = "SUCCESS"
+
+        artifact_metadata = resolve_artifact_metadata(
+            s3_client, s3_bucket_name, prefix
+        )
+
+        for artifact in artifact_metadata:
+            fds.create_forensic_artifact(
+                id=forensic_id,
+                phase=ForensicsProcessingPhase.INVESTIGATION,
+                category=ArtifactCategory.MEMORY,
+                type=ArtifactType.MEMORYANALYSIS,
+                status=ArtifactStatus.SUCCESS,
+                component_id="checkForensicInvestigationStatus",
+                component_type="Lambda",
+                ssm_document_name=ssm_document_name,
+                ssm_command_id=command_id,
+                input_artifact_category=ArtifactCategory.MEMORY,
+                input_artifact_type=ArtifactType.MEMORYDUMP,
+                input_artifact_id=input_artifact_id,
+                artifact_location=artifact.get("artifact_location"),
+                artifact_size=artifact.get("artifact_size"),
+                artifact_SHA256=artifact.get("sha256"),
+            )
+
+        fds.update_forensic_record_phase_status(
+            id=forensic_id,
+            memory=(
+                ForensicsProcessingPhase.SUCCESS,
+                "Completed forensic Memory analysis",
+            ),
+        )
+
+    elif ssm_response.get("StatusDetails", None) not in ["Success"]:
+        raise ForensicLambdaExecutionException(
+            "Job execution failed. {}".format(
+                ssm_response.get("StatusDetails", None)
+            )
+        )

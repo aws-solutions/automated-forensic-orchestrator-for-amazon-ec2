@@ -20,6 +20,7 @@ from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import create_response
+from ..common.exception import DiskAcquisitionError
 from ..common.log import get_logger
 from ..data.datatypes import ForensicsProcessingPhase
 
@@ -95,7 +96,7 @@ def handler(event, context):
         output_body["errorComponentType"] = "Lambda"
         output_body["eventData"] = exception_message.replace('"', "-")
 
-        raise RuntimeError(output_body)
+        raise DiskAcquisitionError(output_body)
 
 
 def all_snapshots_completed(snapshots) -> bool:

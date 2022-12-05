@@ -291,7 +291,7 @@ export class ForensicsSolutionsConstructsStack extends Stack {
             );
             this.vpc = baseinfra.vpc;
         }
-        if (this.node.tryGetContext(IS_SAND_BOX) == true) {
+        if (this.node.tryGetContext(IS_SAND_BOX)) {
             new ForensicsSecurityHubConfigConstruct(
                 this,
                 'ForensicSecurityHubConstruct',

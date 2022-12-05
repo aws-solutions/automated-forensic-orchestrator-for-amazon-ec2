@@ -59,6 +59,7 @@ class ForensicsProcessingPhase(Enum):
     ISOLATION = "ISOLATION"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    ISOLATION_FAILED = "ISOLATION_FAILED"
 
 
 @dataclass

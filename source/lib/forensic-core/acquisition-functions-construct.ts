@@ -387,7 +387,6 @@ export class ForensicsAcquisitionConstruct extends Construct {
                     INSTANCE_TABLE_NAME: props.instanceTable.tableName,
                     S3_BUCKET_NAME: props.forensicBucket.bucketName,
                     S3_COPY_ROLE: props.s3CopyRole.roleArn,
-                    //TODO - update as props
                     memoryAcquisitionDocumentName: 'lime-memory-acquisition',
                     APP_ACCOUNT_ROLE: `${APP_ACCOUNT_ASSUME_ROLE_NAME}-${
                         Stack.of(this).region

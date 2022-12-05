@@ -1,10 +1,14 @@
 # Automated Forensics Orchestrator for Amazon EC2
 
-Automated Forensics Orchestrator for Amazon EC2 is a self-service AWS Solution implementation that enterprise customers can deploy to quickly set up and configure an automated orchestration workflow that enables their Security Operations Centre (SOC) to capture and examine data from EC2 instances and attached volumes as evidence for forensic analysis, in the event of a potential security breach. It will orchestrate the forensics process from the point at which a threat is first detected, enable isolation of the affected EC2 instances and data volumes, capture memory and disk images to secure storage, and trigger automated actions or tools for investigation and analysis of such artefacts. All the while, the solution will notify and report on its progress, status, and findings. It will enable SOC to continuously discover and analyze patterns of fraudulent activities across multi-account and multi-region environments. The solution will leverage native AWS services and be underpinned by a highly available, resilient, and serverless architecture, security, and operational monitoring features.
+AWS EC2 Forensics Orchestrator is a self-service AWS Solution implementation that enterprise customers can deploy to quickly set up and configure an automated orchestration workflow. The workflow enables the Security Operations Centre (SOC) to capture and examine data from EC2 instances and attached volumes as evidence for forensic analysis, in the event of a potential security breach.
 
-Digital forensics is a 4 step process of triaging, acquisition, analysis and reporting. Automated Forensics framework provides capability to enterprise to act on security event by imaging or acquisition of breached resource for examination and generate forensic report about the security breach. In the event of a security breach, it will enable customers to easily to capture and examine required targeted data for forsensic’s storage and analysis. This solution framework enables security operations centre to discover and analyse patterns of fraudulent activities. The automated forensics solution will provide a multi-account and a multi-region [“solution”] built using native AWS services.
+The solution orchestrates the forensics process from the point at which a threat is first detected, enable isolation of the affected EC2 instances and data volumes, capture memory and disk images to secure storage, and trigger automated actions or tools for investigation and analysis of such artefacts. The solution notifies and reports on its progress, status, and findings, which enables SOCs to continuously discover and analyze patterns of fraudulent activities across multi-account and multi-region environments. The solution leverages native AWS services and is underpinned by a highly available, resilient, and serverless architecture, security, and operational monitoring features.
 
-### Automated Forensics Orchestrator for Amazon EC2 Solution Architecture
+Digital forensics is a four step process of triaging, acquisition, analysis and reporting. The automated Forensics framework provides enterprises the capability to act on a security event by imaging or acquisition of breached resource for examination and generates a forensic report about the security breach. In the event of a security breach, it enable customers to easily to capture and examine required targeted data for forsensic’s storage and analysis.
+
+A full walkthrough for the solution can be found [here](https://docs.aws.amazon.com/solutions/latest/automated-forensics-orchestrator-for-amazon-ec2/welcome.html)
+
+### EC2 Forensic Orchestrator Solution Architecture
 
 ![Forensic Orchestrator Architecture](source/architecture/architecture.png)
 
@@ -20,15 +24,17 @@ _Tools_
     -   https://aws.amazon.com/cli/
 -   The latest version of the AWS CDKV2 (2.2 or newer).
     -   https://docs.aws.amazon.com/cdk/latest/guide/home.html
--   A CDK bootstrapped AWS account.
+-   Forensic and Security Hub AWS accounts are bootstrapped with CDK bootstrapped
     -   https://docs.aws.amazon.com/cdk/latest/guide/bootstrapping.html
 -   nodejs version 16
     -   https://docs.npmjs.com/getting-started
--   LIME agent installed on EC2
+-   Ensure GraphQL – AppSync is activated in the Forensic AWS account
+-   AWS Systems Manager (SSM) [agent](https://docs.aws.amazon.com/systems-manager/latest/userguide/ssm-agent.html) installed on EC2
 -   Enable SecurityHub as the solution creates a custom action in securityHub
     _Note:_ We are working on a blog detailing how to use SSM Distributor to deploy agents across a multi account environment.
--   Supported EC2 instances
+-   Supported EC2 instance AMIs
     -   _Amazon Linux 2 AMI (HVM) - Kernel 5.10, SSD Volume Type_ - ami-0a4e637babb7b0a86 (64-bit x86) / ami-0bc96915949503483 (64-bit Arm)
+-   Python version 3.8 or above
 
 ---
 
@@ -60,7 +66,7 @@ _Tools_
 
 7. To deploy the Forensic Stack in the Forensic AWS Account:
 
-    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=<<Forensic Deployment AWS Region>> --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
+    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=us-east-1 --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
 
     Example:
 
@@ -86,7 +92,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
     3. `npm run build:collector`
 5. To build the Forensic Stack to be deployed in the SecurityHub Aggregator account:
 
-    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=<<Forensic Deployment AWS Region>> -c sechubregion=<<SecuirtyHub AWS Region>> -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
+    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=us-east-1 -c sechubregion=us-east-1 -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
 
     Example:
 
@@ -94,7 +100,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
 
 6. To deploy the Forensic Stack in the SecurityHub Aggregator account:
 
-    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=<<SecuirtyHub AWS Region>> --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
+    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=us-east-1 --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
     Example:
 
@@ -138,7 +144,7 @@ Deploy the following cloud formation template in Application account to establis
     3. `npm run build:collector`
 7.  To build the Forensic Stack to be deployed in the Forensic AWS Account:
 
-    `cdk synth -c account=<<Forensic AWS Account>> -c region=<<Forensic Deployment AWS Region>> -c secHubAccount=<<SecuHub Aggregator Account>> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
+    `cdk synth -c account=<<Forensic AWS Account>> -c region=<<Forensic solution Region>> -c secHubAccount=<<SecuHub Aggregator Account>> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
 
     Example:
 
@@ -146,7 +152,7 @@ Deploy the following cloud formation template in Application account to establis
 
 8.  To deploy the Forensic Stack in the Forensic AWS Account:
 
-    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=<<Forensic Deployment AWS Region>> --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
+    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=<<Forensic solution Region>> --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
 
     Example:
 
@@ -180,7 +186,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
     3. `npm run build:collector`
 6.  To build the Forensic Stack to be deployed in SecurityHub Aggregator account:
 
-    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=<<Forensic Deployment AWS Region>> -c sechubregion=<<Security Hub Region>> -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
+    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=<<Forensic solution Region>> -c sechubregion=<<Security Hub Region>> -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
 
     Example:
 
@@ -188,7 +194,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
 
 7.  To deploy the Forensic Stack loyed in SecurityHub Aggregator account:
 
-    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=<<Security Hub Region>> --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
+    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=<<Forensic solution Region>> --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
     Example:
 
@@ -233,6 +239,9 @@ After successfully cloning the repository into your local development environmen
   |- README.md                - doc file for the CDK project.
   |- run-all-tests.sh         - runs all tests within the /source folder. Referenced in the buildspec and build scripts.
 |- .gitignore
+|- .viperlightignore          - Viperlight scan ignore configuration  (accepts file, path, or line item).
+|- .viperlightrc              - Viperlight scan configuration.
+|- buildspec.yml              - main build specification for CodeBuild to perform builds and execute unit tests.
 |- CHANGELOG.md               - required for every solution to include changes based on version to auto-build release notes.
 |- CODE_OF_CONDUCT.md         - standardized open source file for all solutions.
 |- CONTRIBUTING.md            - standardized open source file for all solutions.
@@ -262,7 +271,7 @@ Additional scripts related to building, testing, and cleaning-up assets may be f
 
 ### Prerequisites
 
-Python version 3.8.x. We recommend setting up [pyenv](https://github.com/pyenv/pyenv).
+Python version 3.9.x. We recommend setting up [pyenv](https://github.com/pyenv/pyenv).
 
 ### Tests for Python code of the lambdas
 
@@ -272,6 +281,7 @@ Python version 3.8.x. We recommend setting up [pyenv](https://github.com/pyenv/p
 -   `make test` runs the test (includes format, lint and static check)
 -   `make fmt` only runs format
 -   `make lint` only runs lint
+-   `make lint-strict` only runs lint with additional check
 -   `make install` installs all dependency
 -   `make lock-version` locks the version if there is any latest version dependency (e.g no version specified)
 -   `make check-py-version` a prerequisite for build execution, is relied upon by tasks `test` and `virtualenv`
@@ -286,7 +296,7 @@ This script is called from the solution build scripts to ensure that specified t
 
 ## Collection of operational metrics
 
-This solution collects anonymous operational metrics to help AWS improve the quality and features of the solution. For more information, including how to disable this capability, please see the [implementation guide](https://docs.aws.amazon.com/solutions/latest/automated-forensics-orchestrator-for-amazon-ec2/collection-of-operational-metrics.html).
+This solution collects anonymous operational metrics to help AWS improve the quality and features of the solution. For more information, including how to disable this capability, please see the [implementation guide](deep link into the documentation with specific information about the metrics and how to opt-out).
 
 ## Useful commands
 
@@ -300,23 +310,16 @@ This solution collects anonymous operational metrics to help AWS improve the qua
 -   `cdk synth` Emits the synthesized CloudFormation template
 -   Steps to build the Forensic Stack to be deployed in Forensic AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=forensicAccount` - Sets the environment variable as forensic Account to build the necessary CDK CFN templates for deploying forensic stack
-    -   `cdk synth -c account=<<Forensic AWS Account>> -c region=<<Forensic AWS Region>>` build the necessary CDK CFN templates for deploying forensic stack
+    -   `cdk synth -c account=<<Forensic AWS Account>> -c region=ap-southeast-2` build the necessary CDK CFN templates for deploying forensic stack
 -   Steps to build the Forensic Stack to be deployed in SecurityHub AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=securityHubAccount` - Sets the environment variable as SecurityHubAccount Account to build the necessary CDK CFN templates for deploying SecurityHub stack
-    -   `cdk synth -c account=<<SecuirtyHub AWS Account>> -c region=<<Security Hub Region>>` Build the necessary CDK CFN templates for deploying SecurityHub stack
+    -   `cdk synth -c account=<<SecuirtyHub AWS Account>> -c region=ap-southeast-2` Build the necessary CDK CFN templates for deploying SecurityHub stack
 -   Steps to deploy the Forensic Stack in Forensic AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=forensicAccount` - Sets the environment variable as forensic Account to build the necessary CDK CFN templates for deploying forensic stack
-    -   `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=<<Forensic AWS Region>> --require-approval=never -c secHubAccount=<<SecuirtyHub AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
+    -   `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=ap-southeast-2 --require-approval=never -c secHubAccount=<<SecuirtyHub AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
 -   Steps to deploy the Forensic Stack in SecurityHub AWS Account
     -   `export STACK_BUILD_TARGET_ACCT=securityHubAccount` - Sets the environment variable as SecurityHubAccount Account to build the necessary CDK CFN templates for deploying SecurityHub stack
-    -   `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=<<Security Hub Region>> --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
-
----
-```
-Note: 
-We make no claim as to the suitability of Automated Forensics Orchestrator for Amazon EC2 in the detection or investigation of crime, nor the ability of data or forensics evidence captured by this solution to be used in a court of law. You should independently evaluate the suitability of Automated Forensics Orchestrator for Amazon EC2 for your use case.
-
-```
+    -   `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=ap-southeast-2 --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
 ---
 

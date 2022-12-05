@@ -45,7 +45,7 @@ export class ForensicSSMDBuilderConstruct extends Construct {
             SSM_EXECUTION_TIMEOUT_CONTEXT_VALUE
         );
         this.lambdaEnvironmentProps = {};
-        //TODO remove once VPC ID is used
+
         console.log(props);
 
         //Create SSM documents

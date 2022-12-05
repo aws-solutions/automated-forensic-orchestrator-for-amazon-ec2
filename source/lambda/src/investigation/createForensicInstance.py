@@ -17,12 +17,12 @@
 import logging
 import os
 import secrets
-import string
 
 from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import AWSCachedClient, create_aws_client
 from ..common.common import clean_date_format, create_response
+from ..common.exception import InvestigationError
 from ..common.log import get_logger
 from ..data.datatypes import ForensicCategory, ForensicsProcessingPhase
 from ..data.service import ForensicDataService
@@ -31,7 +31,7 @@ from ..data.service import ForensicDataService
 logger = get_logger(__name__)
 
 
-def id_generator(size=1000, chars=string.ascii_uppercase + string.digits):
+def id_generator(size=1000):
     logger.info("rdmNumber generator")
     logger.info(secrets.randbelow(size))
     rdm_number = f"{secrets.randbelow(size)}"
@@ -237,4 +237,4 @@ def handler(event, _):
         output_body["errorComponentType"] = "Lambda"
         output_body["eventData"] = exception_message.replace('"', "-")
 
-        raise RuntimeError(output_body)
+        raise InvestigationError(output_body)

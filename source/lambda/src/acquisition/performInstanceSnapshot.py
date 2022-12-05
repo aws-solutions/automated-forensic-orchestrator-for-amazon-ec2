@@ -19,6 +19,7 @@ from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import create_response
+from ..common.exception import DiskAcquisitionError
 from ..common.log import get_logger
 from ..data.datatypes import (
     ArtifactCategory,
@@ -79,7 +80,6 @@ def handler(event, context):
         output_body["instanceId"] = instance_id
         logger.info("Taking snapshot for EBS volumes {0}".format(instance_id))
 
-        # TODO handle rate limit
         snapshot_details = ec2_client.create_snapshots(
             Description=f"Isolated Instance - Forensic ID: {forensic_id}",
             InstanceSpecification={
@@ -143,6 +143,6 @@ def handler(event, context):
         output_body["errorComponentType"] = "Lambda"
         output_body["eventData"] = exception_message.replace('"', "-")
 
-        raise RuntimeError(output_body)
+        raise DiskAcquisitionError(output_body)
 
     return create_response(200, output_body)

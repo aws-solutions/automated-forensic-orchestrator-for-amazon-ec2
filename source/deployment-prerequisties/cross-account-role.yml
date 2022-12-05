@@ -92,6 +92,32 @@ Resources:
             PolicyName: ForensicCrossAppAccountKMSFDC5F105
             Roles:
                 - Ref: ForensicCrossAccountRole256E0D71
+        
+    IAMIsolationRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+        RoleName: 'IAMIsolationIAMRole'
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Effect: "Allow"
+              Principal:
+                Service:
+                  - "ec2.amazonaws.com"
+              Action:
+                - "sts:AssumeRole"
+        Path: "/"
+        ManagedPolicyArns:
+          - "arn:aws:iam::aws:policy/AWSDenyAll"
+
+    ForensicIsolationInstanceProfile:
+      Type: "AWS::IAM::InstanceProfile"
+      Properties:
+        InstanceProfileName: 'ForensicIsolationInstanceProfile'
+        Path: "/"
+        Roles:
+          - !Ref IAMIsolationRole
 
     ForensicCrossAccountRole256E0D71:
         Type: AWS::IAM::Role
@@ -168,11 +194,18 @@ Resources:
                 - ''
                 - - 'ForensicEc2AllowAccessRole-'
                   - !Ref 'AWS::Region'
+
     ForensicCrossAccountRoleDefaultPolicyFDC5F105:
         Type: AWS::IAM::Policy
         Properties:
             PolicyDocument:
                 Statement:
+                    - Effect: Allow
+                      Action: iam:PassRole
+                      Resource:
+                        - !GetAtt
+                            - IAMIsolationRole
+                            - Arn
                     - Action:
                           - ec2:CreateSnapshots
                           - ec2:CreateSnapshot
@@ -191,6 +224,13 @@ Resources:
                           - ec2:ModifySecurityGroupRules
                           - ec2:ModifyNetworkInterfaceAttribute
                           - ec2:ModifyInstanceAttribute
+                          - ec2:AssociateIamInstanceProfile
+                          - ec2:DescribeIamInstanceProfileAssociations
+                          - ec2:ReplaceIamInstanceProfileAssociation
+                          - ec2:DescribeAddresses
+                          - ec2:DisassociateAddress
+                          - iam:GetInstanceProfile
+                          - iam:PutRolePolicy
                       Effect: Allow
                       Resource: '*'
                 Version: '2012-10-17'

@@ -21,18 +21,16 @@ from unittest.mock import MagicMock, Mock, patch
 import boto3
 import pytest
 
-from ...src.common.awsapi_cached_client import AWSCachedClient, BotoSession
+from ...src.common.exception import ForensicLambdaExecutionException
+
 from ...src.isolation import isolateEc2
+from botocore.exceptions import ClientError
 
 modify_snapshot_attribute_fn = MagicMock()
 
 modify_snapshot_attribute_fn.return_value = (
     lambda Attribute, DryRun, UserIds, SnapshotId, OperationType, CreateVolumePermission: {}
 )
-
-modify_network_interface_attribute_fn = MagicMock()
-
-describe_security_groups_fn = MagicMock()
 
 
 def forensic_record():
@@ -248,6 +246,13 @@ def forensic_record():
             ]
         },
     }
+    # "memoryAnalysisStatus": {"S": "ACQUISITION"},
+
+
+def get_record_for_failed_isolation_fn():
+    target_record = forensic_record()
+    target_record["memoryAnalysisStatus"] = {"S": "ISOLATION_FAILED"}
+    return {"Item": target_record}
 
 
 def get_item_event():
@@ -260,23 +265,79 @@ def get_update_record_event():
 
 create_security_group_fn = MagicMock()
 
+modify_network_interface_attribute_fn = MagicMock()
+describe_security_groups_fn = MagicMock()
+modify_instance_attribute_fn = MagicMock()
+describe_iam_instance_profile_associations_fn = MagicMock()
+associate_iam_instance_profile_fn = MagicMock()
+replace_iam_instance_profile_association_fn = MagicMock()
+update_item_fn = MagicMock(return_value=get_update_record_event())
+describe_addresses_fn = MagicMock()
+disassociate_address_fn = MagicMock()
+get_instance_profile_fn = MagicMock()
+put_role_policy_fn = MagicMock()
 
-def mock_connection(ec_response):
+
+modify_instance_attribute_fn.return_value = {
+    "ResponseMetadata": {
+        "RequestId": "0cc22a5d-b3f0-4cdc-bfa1-f22ebee6a635",
+        "HTTPStatusCode": 200,
+        "HTTPHeaders": {
+            "x-amzn-requestid": "0cc22a5d-b3f0-4cdc-bfa1-f22ebee6a635",
+            "cache-control": "no-cache, no-store",
+            "strict-transport-security": "max-age=31536000; includeSubDomains",
+            "content-type": "text/xml;charset=UTF-8",
+            "content-length": "247",
+            "date": "Tue, 04 Oct 2022 00:47:09 GMT",
+            "server": "AmazonEC2",
+        },
+        "RetryAttempts": 0,
+    }
+}
+
+
+def reset_mocks():
+
+    modify_network_interface_attribute_fn.reset_mock()
+    describe_security_groups_fn.reset_mock()
+    modify_instance_attribute_fn.reset_mock()
+    describe_iam_instance_profile_associations_fn.reset_mock()
+    associate_iam_instance_profile_fn.reset_mock()
+    replace_iam_instance_profile_association_fn.reset_mock()
+    get_instance_profile_fn.reset_mock()
+    put_role_policy_fn.reset_mock()
+
+
+def mock_connection(ec_response, get_item_fn=get_item_event):
     mockClient = Mock(boto3.client("sts"))
     mockClient.assume_role = MagicMock(return_value={})
     mockClient.get_caller_identity = lambda: {}
     mockClient._get_local_account_id = lambda: {}
     mockClient.describe_instances = lambda InstanceIds: ec_response
     mockClient.put_item = MagicMock()
-    mockClient.get_item = MagicMock(return_value=get_item_event())
-    mockClient.update_item = MagicMock(return_value=get_update_record_event())
+    mockClient.get_item = MagicMock(return_value=get_item_fn())
+    mockClient.update_item = update_item_fn
     mockClient.modify_snapshot_attribute = modify_snapshot_attribute_fn
     mockClient.revoke_security_group_egress = describe_security_groups_fn
     mockClient.describe_security_groups = describe_security_groups_fn
     mockClient.authorize_security_group_ingress = MagicMock()
+    mockClient.describe_addresses = describe_addresses_fn
+    mockClient.disassociate_address = disassociate_address_fn
+    mockClient.put_role_policy = put_role_policy_fn
+    mockClient.get_instance_profile = get_instance_profile_fn
     mockClient.modify_network_interface_attribute = (
         modify_network_interface_attribute_fn
     )
+    mockClient.describe_iam_instance_profile_associations = (
+        describe_iam_instance_profile_associations_fn
+    )
+    mockClient.replace_iam_instance_profile_association = (
+        replace_iam_instance_profile_association_fn
+    )
+    mockClient.associate_iam_instance_profile = (
+        associate_iam_instance_profile_fn
+    )
+    mockClient.modify_instance_attribute = modify_instance_attribute_fn
 
     mockClient.create_security_group = create_security_group_fn
     return mockClient
@@ -636,6 +697,11 @@ event_multiple_eni = {
     "StatusCode": 200,
 }
 
+error_flow_event = {
+    "Error": "MemoryAcquisitionError",
+    "Cause": '{"errorMessage":"{\\"forensicId\\": \\"a3eb6c1a-b1f7-4068-8103-05c7ef07e1ba\\", \\"instanceAccount\\": \\"157937789158\\", \\"instanceInfo\\": {\\"AmiLaunchIndex\\": 0, \\"Architecture\\": \\"x86_64\\", \\"BlockDeviceMappings\\": [{\\"DeviceName\\": \\"/dev/xvda\\", \\"Ebs\\": {\\"AttachTime\\": \\"2022-10-10T23:33:41+00:00\\", \\"DeleteOnTermination\\": true, \\"Status\\": \\"attached\\", \\"VolumeId\\": \\"vol-0e0b8e48107e922de\\"}}], \\"CapacityReservationSpecification\\": {\\"CapacityReservationPreference\\": \\"open\\"}, \\"ClientToken\\": \\"\\", \\"CpuOptions\\": {\\"CoreCount\\": 1, \\"ThreadsPerCore\\": 2}, \\"EbsOptimized\\": true, \\"EnaSupport\\": true, \\"EnclaveOptions\\": {\\"Enabled\\": false}, \\"HibernationOptions\\": {\\"Configured\\": false}, \\"Hypervisor\\": \\"xen\\", \\"IamInstanceProfile\\": {\\"Arn\\": \\"arn:aws:iam::157937789158:instance-profile/AmazonSSMRoleForInstancesQuickSetup\\", \\"Id\\": \\"AIPASJROTNDTDUFEOXLUS\\"}, \\"ImageId\\": \\"ami-067e6178c7a211324\\", \\"InstanceId\\": \\"i-03385f4dfc2b23562\\", \\"InstanceType\\": \\"t3.small\\", \\"KeyName\\": \\"forensic-instance-key\\", \\"LaunchTime\\": \\"2022-10-10T23:33:40+00:00\\", \\"MetadataOptions\\": {\\"HttpEndpoint\\": \\"enabled\\", \\"HttpProtocolIpv6\\": \\"disabled\\", \\"HttpPutResponseHopLimit\\": 1, \\"HttpTokens\\": \\"optional\\", \\"State\\": \\"applied\\"}, \\"Monitoring\\": {\\"State\\": \\"disabled\\"}, \\"NetworkInterfaces\\": [{\\"Association\\": {\\"IpOwnerId\\": \\"amazon\\", \\"PublicDnsName\\": \\"ec2-3-27-73-165.ap-southeast-2.compute.amazonaws.com\\", \\"PublicIp\\": \\"3.27.73.165\\"}, \\"Attachment\\": {\\"AttachTime\\": \\"2022-10-10T23:33:40+00:00\\", \\"AttachmentId\\": \\"eni-attach-0f3c9103715be48cb\\", \\"DeleteOnTermination\\": true, \\"DeviceIndex\\": 0, \\"NetworkCardIndex\\": 0, \\"Status\\": \\"attached\\"}, \\"Description\\": \\"\\", \\"Groups\\": [{\\"GroupId\\": \\"sg-01445345a29cc2643\\", \\"GroupName\\": \\"launch-wizard-4\\"}], \\"InterfaceType\\": \\"interface\\", \\"Ipv6Addresses\\": [], \\"MacAddress\\": \\"0a:ba:7f:2d:dc:fe\\", \\"NetworkInterfaceId\\": \\"eni-03d2019ee8c06bab9\\", \\"OwnerId\\": \\"157937789158\\", \\"PrivateDnsName\\": \\"ip-172-31-26-129.ap-southeast-2.compute.internal\\", \\"PrivateIpAddress\\": \\"172.31.26.129\\", \\"PrivateIpAddresses\\": [{\\"Association\\": {\\"IpOwnerId\\": \\"amazon\\", \\"PublicDnsName\\": \\"ec2-3-27-73-165.ap-southeast-2.compute.amazonaws.com\\", \\"PublicIp\\": \\"3.27.73.165\\"}, \\"Primary\\": true, \\"PrivateDnsName\\": \\"ip-172-31-26-129.ap-southeast-2.compute.internal\\", \\"PrivateIpAddress\\": \\"172.31.26.129\\"}], \\"SourceDestCheck\\": true, \\"Status\\": \\"in-use\\", \\"SubnetId\\": \\"subnet-08c39066d2b0c58fa\\", \\"VpcId\\": \\"vpc-01e9be2545db498e6\\"}], \\"Placement\\": {\\"AvailabilityZone\\": \\"ap-southeast-2c\\", \\"GroupName\\": \\"\\", \\"Tenancy\\": \\"default\\"}, \\"PlatformDetails\\": \\"Linux/UNIX\\", \\"PrivateDnsName\\": \\"ip-172-31-26-129.ap-southeast-2.compute.internal\\", \\"PrivateDnsNameOptions\\": {\\"EnableResourceNameDnsAAAARecord\\": false, \\"EnableResourceNameDnsARecord\\": true, \\"HostnameType\\": \\"ip-name\\"}, \\"PrivateIpAddress\\": \\"172.31.26.129\\", \\"ProductCodes\\": [], \\"PublicDnsName\\": \\"ec2-3-27-73-165.ap-southeast-2.compute.amazonaws.com\\", \\"PublicIpAddress\\": \\"3.27.73.165\\", \\"RootDeviceName\\": \\"/dev/xvda\\", \\"RootDeviceType\\": \\"ebs\\", \\"SecurityGroups\\": [{\\"GroupId\\": \\"sg-01445345a29cc2643\\", \\"GroupName\\": \\"launch-wizard-4\\"}], \\"SourceDestCheck\\": true, \\"State\\": {\\"Code\\": 16, \\"Name\\": \\"running\\"}, \\"StateTransitionReason\\": \\"\\", \\"SubnetId\\": \\"subnet-08c39066d2b0c58fa\\", \\"Tags\\": [{\\"Key\\": \\"Name\\", \\"Value\\": \\"forensic-test-017\\"}], \\"UsageOperation\\": \\"RunInstances\\", \\"UsageOperationUpdateTime\\": \\"2022-10-10T23:33:40+00:00\\", \\"VirtualizationType\\": \\"hvm\\", \\"VpcId\\": \\"vpc-01e9be2545db498e6\\"}, \\"instanceRegion\\": \\"ap-southeast-2\\", \\"isAcquisitionRequired\\": true, \\"isIsolationNeeded\\": true, \\"forensicType\\": \\"MEMORY\\", \\"SSM_STATUS\\": \\"SUCCEEDED\\", \\"ForensicInstanceId\\": \\"i-03385f4dfc2b23562\\", \\"errorName\\": \\"Error: Creating memory dump\\", \\"errorDescription\\": \\"Error while performing Forensic MEMORY acquisition\\", \\"errorPhase\\": \\"ACQUISITION\\", \\"errorComponentId\\": \\"performMemoryAcquisition\\", \\"errorComponentType\\": \\"Lambda\\", \\"eventData\\": \\"SSM Not installed\\"}","errorType":"MemoryAcquisitionError","requestId":"c314a9f2-df4e-4566-890e-33ea8c630a9b","stackTrace":["  File \\"/opt/python/wrapt/wrappers.py\\", line 578, in __call__\\n    return self._self_wrapper(self.__wrapped__, self._self_instance,\\n","  File \\"/opt/python/aws_xray_sdk/core/models/subsegment.py\\", line 54, in __call__\\n    return self.recorder.record_subsegment(\\n","  File \\"/opt/python/aws_xray_sdk/core/recorder.py\\", line 424, in record_subsegment\\n    return_value = wrapped(*args, **kwargs)\\n","  File \\"/var/task/src/acquisition/performMemoryAcquisition.py\\", line 250, in handler\\n    raise MemoryAcquisitionError(json.dumps(output_body))\\n"]}',
+}
+
 
 @mock.patch.dict(
     os.environ,
@@ -643,6 +709,8 @@ event_multiple_eni = {
         "AWS_REGION": "ap-southeast-2",
         "INSTANCE_TABLE_NAME": "table",
         "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
     },
 )
 def test_add_isolation_sg_for_first_time():
@@ -665,6 +733,495 @@ def test_add_isolation_sg_for_first_time():
         "AWS_REGION": "ap-southeast-2",
         "INSTANCE_TABLE_NAME": "table",
         "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_revoke_existing_session_access():
+
+    modify_snapshot_attribute_fn.reset_mock()
+    get_instance_profile_fn.return_value = {
+        "InstanceProfile": {
+            "Path": "/",
+            "InstanceProfileName": "AmazonSSMRoleForInstancesQuickSetup",
+            "InstanceProfileId": "AIPASJROTNDTDUFEOXLUS",
+            "Arn": "arn:aws:iam::157937789158:instance-profile/AmazonSSMRoleForInstancesQuickSetup",
+            "CreateDate": "2022-10-03T04:58:41+00:00",
+            "Roles": [
+                {
+                    "Path": "/",
+                    "RoleName": "AmazonSSMRoleForInstancesQuickSetup",
+                    "RoleId": "AROASJROTNDTGEUFBAC5W",
+                    "Arn": "arn:aws:iam::157937789158:role/AmazonSSMRoleForInstancesQuickSetup",
+                    "CreateDate": "2022-10-03T04:58:36+00:00",
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "ec2.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    },
+                }
+            ],
+            "Tags": [],
+        }
+    }
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+    put_role_policy_fn.assert_called_once()
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_ignore_role_policy_update_when_profile_has_no_roles():
+
+    reset_mocks()
+    get_instance_profile_fn.return_value = {
+        "InstanceProfile": {
+            "Path": "/",
+            "InstanceProfileName": "CodeDeployDemo-EC2-Instance-Profile",
+            "InstanceProfileId": "AIPASJROTNDTE3ALV4A72",
+            "Arn": "arn:aws:iam::157937789158:instance-profile/CodeDeployDemo-EC2-Instance-Profile",
+            "CreateDate": "2022-10-14T04:17:33+00:00",
+            "Roles": [],
+            "Tags": [],
+        }
+    }
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+    put_role_policy_fn.assert_not_called()
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_disassociate_eip():
+
+    modify_snapshot_attribute_fn.reset_mock()
+    disassociate_address_fn.reset_mock()
+    describe_addresses_fn.reset_mock()
+    describe_addresses_fn.return_value = {
+        "Addresses": [
+            {
+                "InstanceId": "i-0ff3ed3c952ba0256",
+                "PublicIp": "54.253.177.89",
+                "AllocationId": "eipalloc-01b362b5332bb8ddb",
+                "AssociationId": "association-id-a",
+                "Domain": "vpc",
+                "NetworkInterfaceId": "eni-07cbc8200b250c463",
+                "NetworkInterfaceOwnerId": "157937789158",
+                "PrivateIpAddress": "172.31.31.92",
+                "Tags": [{"Key": "Name", "Value": "test-eip-for-ec2"}],
+                "PublicIpv4Pool": "amazon",
+                "NetworkBorderGroup": "ap-southeast-2",
+            }
+        ]
+    }
+
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+    disassociate_address_fn.assert_called_once_with(
+        AssociationId="association-id-a"
+    )
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_pass_thru_when_no_association():
+
+    modify_snapshot_attribute_fn.reset_mock()
+    disassociate_address_fn.reset_mock()
+    describe_addresses_fn.reset_mock()
+    describe_addresses_fn.return_value = {"Addresses": []}
+
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+    disassociate_address_fn.assert_not_called()
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_exception_flow_can_trigger_isolation():
+
+    modify_snapshot_attribute_fn.reset_mock()
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ), pytest.raises(ForensicLambdaExecutionException) as execinfo:
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        isolateEc2.handler(error_flow_event, context)
+    assert execinfo.type == ForensicLambdaExecutionException
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_should_not_attempt_isolation_on_previous_failed_isolation():
+    """
+    if the previous isolation failed, we should not re-attempt it, just send out SNS as it needs human intervention
+    """
+    modify_snapshot_attribute_fn.reset_mock()
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(
+            return_value=mock_connection(
+                ec_response={}, get_item_fn=get_record_for_failed_isolation_fn
+            )
+        ),
+    ), pytest.raises(ForensicLambdaExecutionException) as execinfo:
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(error_flow_event, context)
+    assert execinfo.type == ForensicLambdaExecutionException
+    assert execinfo.value.args[0] == "Previous isolation failed"
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_isolate_even_when_termination_protection_ops_failed():
+
+    modify_snapshot_attribute_fn.reset_mock()
+    modify_instance_attribute_fn.side_effect = ClientError(
+        error_response={
+            "Error": {
+                "Code": 500,
+                "Message": "fake msg",
+            }
+        },
+        operation_name="modify_instance_attribute",
+    )
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+    modify_instance_attribute_fn.reset_mock()
+
+
+def mock_attribute_modification_fn(
+    InstanceId=None,
+    BlockDeviceMappings=None,
+    DisableApiTermination=None,
+    InstanceInitiatedShutdownBehavior=None,
+):
+    """Throw exception for EBS update ONLY"""
+    error = ClientError(
+        error_response={
+            "Error": {
+                "Code": 500,
+                "Message": "fake msg",
+            }
+        },
+        operation_name="modify_instance_attribute",
+    )
+    if BlockDeviceMappings:
+        return error
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_isolate_even_when_termination_protection_ops_for_ebs_failed():
+
+    modify_snapshot_attribute_fn.reset_mock()
+
+    modify_instance_attribute_fn.side_effect = mock_attribute_modification_fn
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+    modify_instance_attribute_fn.reset_mock()
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_update_instance_profile_cross_account():
+
+    reset_mocks()
+    describe_iam_instance_profile_associations_fn.return_value = {
+        "IamInstanceProfileAssociations": [
+            {
+                "AssociationId": "iip-assoc-0ec0524ad4a43cf3d",
+                "InstanceId": "i-09de7f6b03f83e059",
+                "IamInstanceProfile": {
+                    "Arn": "arn:aws:iam::123456789012:instance-profile/SSMProfile",
+                    "Id": "AIPASJROTNDTKX5XC7YYC",
+                },
+                "State": "associated",
+            }
+        ]
+    }
+
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        # target even account 123456789012 solution account 123456789000
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789000:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        replace_iam_instance_profile_association_fn.assert_called_once_with(
+            IamInstanceProfile={"Name": "role-cross-account"},
+            AssociationId="iip-assoc-0ec0524ad4a43cf3d",
+        )
+        assert ret.get("statusCode") == 200
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_update_instance_profile_cross_account_when_no_existing_profile():
+
+    reset_mocks()
+    describe_iam_instance_profile_associations_fn.return_value = {
+        "IamInstanceProfileAssociations": []
+    }
+
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        # target even account 123456789012 solution account 123456789000
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789000:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        replace_iam_instance_profile_association_fn.assert_not_called()
+        associate_iam_instance_profile_fn.assert_called_once_with(
+            IamInstanceProfile={"Name": "role-cross-account"},
+            InstanceId="i-0edaf8fbe9d9fe5db",
+        )
+        assert ret.get("statusCode") == 200
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_update_instance_profile_on_solution_account():
+
+    reset_mocks()
+
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        # target even account 123456789012 solution account 123456789012
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+        associate_iam_instance_profile_fn.assert_called_once_with(
+            IamInstanceProfile={"Name": "role-local"},
+            InstanceId="i-0edaf8fbe9d9fe5db",
+        )
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_update_instance_profile_on_solution_account_with_existing_profile():
+
+    reset_mocks()
+    describe_iam_instance_profile_associations_fn.return_value = {
+        "IamInstanceProfileAssociations": [
+            {
+                "AssociationId": "iip-assoc-0ec0524ad4a43cf3d",
+                "InstanceId": "i-09de7f6b03f83e059",
+                "IamInstanceProfile": {
+                    "Arn": "arn:aws:iam::123456789012:instance-profile/SSMProfile",
+                    "Id": "AIPASJROTNDTKX5XC7YYC",
+                },
+                "State": "associated",
+            }
+        ]
+    }
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        # target even account 123456789012 solution account 123456789012
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789012:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+        associate_iam_instance_profile_fn.assert_not_called()
+
+        replace_iam_instance_profile_association_fn.assert_called_once_with(
+            IamInstanceProfile={"Name": "role-local"},
+            AssociationId="iip-assoc-0ec0524ad4a43cf3d",
+        )
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
+    },
+)
+def test_failure_on_update_instance_profile_should_not_fail_lambda():
+
+    reset_mocks()
+    replace_iam_instance_profile_association_fn.side_effect = ClientError(
+        error_response={
+            "Error": {
+                "Code": 500,
+                "Message": "fake msg",
+            }
+        },
+        operation_name="replace_iam_instance_profile_association",
+    )
+    with patch.object(
+        isolateEc2,
+        "create_aws_client",
+        Mock(return_value=mock_connection({})),
+    ):
+        # target even account 123456789012 solution account 123456789012
+        context = MagicMock()
+        context.invoked_function_arn = "arn:aws:lambda:ap-southeast-2:123456789000:function:ForensicSolutionStack-forensicsDiskAcquisitionshar-wXRzDyfmUixV"
+        ret = isolateEc2.handler(event, context)
+        assert ret.get("statusCode") == 200
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
     },
 )
 def test_add_isolation_sg_when_sg_for_vpc_exists():
@@ -709,6 +1266,8 @@ def test_add_isolation_sg_when_sg_for_vpc_exists():
         "AWS_REGION": "ap-southeast-2",
         "INSTANCE_TABLE_NAME": "table",
         "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
     },
 )
 def test_add_isolation_sg_for_all_eni():
@@ -739,6 +1298,8 @@ def test_add_isolation_sg_for_all_eni():
         "AWS_REGION": "ap-southeast-2",
         "INSTANCE_TABLE_NAME": "table",
         "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "FORENSIC_ISOLATION_INSTANCE_PROFILE_NAME": "role-cross-account",
+        "SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME": "role-local",
     },
 )
 def test_isolation_failed():

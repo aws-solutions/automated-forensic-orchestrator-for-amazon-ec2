@@ -32,13 +32,13 @@
         "constructs": "^10.0.0"
     },
     "dependencies": {
-        "@aws-cdk/assert": "2.31.0",
+        "@aws-cdk/assert": "2.46.0",
         "@types/node": "18.0.3",
         "@typescript-eslint/eslint-plugin": "5.30.5",
         "@typescript-eslint/parser": "5.30.5",
-        "aws-cdk": "^2.31.0",
-        "aws-cdk-lib": "2.31.0",
-        "aws-sdk": "2.1170.0",
+        "aws-cdk": "^2.50.0",
+        "aws-cdk-lib": "2.46.0",
+        "aws-sdk": "2.1234.0",
         "cdk-nag": "^2.15.5",
         "constructs": "^10.0.0",
         "eslint": "8.19.0",

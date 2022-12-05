@@ -117,10 +117,7 @@ def lambda_handler(event, context):
 
         logger.info(physical_resource_id)
 
-        if (
-            event["RequestType"] == "Create"
-            or event["RequestType"] == "Update"
-        ):
+        if event["RequestType"] in ["Create", "Update"]:
             try:
                 logger.info(
                     event["RequestType"].upper() + ": " + physical_resource_id
@@ -133,23 +130,7 @@ def lambda_handler(event, context):
                 logger.info(response)
                 response_data["Arn"] = response["ActionTargetArn"]
             except ClientError as error:
-                if (
-                    error.response["Error"]["Code"]
-                    == "ResourceConflictException"
-                ):
-                    logger.info(
-                        "ResourceConflictException: already exists. Continuing"
-                    )
-                elif (
-                    error.response["Error"]["Code"] == "InvalidAccessException"
-                ):
-                    logger.info(
-                        "InvalidAccessException - Account is not subscribed to AWS Security Hub."
-                    )
-                    raise
-                else:
-                    logger.error(error)
-                    raise
+                handle_client_error_creation(error)
             except Exception as e:
                 logger.error(e)
                 raise
@@ -161,22 +142,7 @@ def lambda_handler(event, context):
                     ActionTargetArn=f"arn:{partition}:securityhub:{region}:{account_id}:action/custom/{properties['Id']}"
                 )
             except ClientError as error:
-                if (
-                    error.response["Error"]["Code"]
-                    == "ResourceNotFoundException"
-                ):
-                    logger.info(
-                        "ResourceNotFoundException - nothing to delete."
-                    )
-                elif (
-                    error.response["Error"]["Code"] == "InvalidAccessException"
-                ):
-                    logger.info(
-                        "InvalidAccessException - not subscribed to Security Hub (nothing to delete)."
-                    )
-                else:
-                    logger.error(error)
-                    raise
+                handle_client_error_deletion(error)
             except Exception as e:
                 logger.error(e)
                 raise
@@ -217,3 +183,28 @@ def lambda_handler(event, context):
             reason=err_msg,
         )
         return create_response(500, "send Status Error")
+
+
+def handle_client_error_deletion(error: ClientError):
+    if error.response["Error"]["Code"] == "ResourceNotFoundException":
+        logger.info("ResourceNotFoundException - nothing to delete.")
+    elif error.response["Error"]["Code"] == "InvalidAccessException":
+        logger.info(
+            "InvalidAccessException - not subscribed to Security Hub (nothing to delete)."
+        )
+    else:
+        logger.error(error)
+        raise error
+
+
+def handle_client_error_creation(error: ClientError):
+    if error.response["Error"]["Code"] == "ResourceConflictException":
+        logger.info("ResourceConflictException: already exists. Continuing")
+    elif error.response["Error"]["Code"] == "InvalidAccessException":
+        logger.info(
+            "InvalidAccessException - Account is not subscribed to AWS Security Hub."
+        )
+        raise error
+    else:
+        logger.error(error)
+        raise error
