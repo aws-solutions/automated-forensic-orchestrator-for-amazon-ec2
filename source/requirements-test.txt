@@ -8,7 +8,7 @@ attrs==21.4.0
     # via pytest
 black==22.1.0
     # via -r requirements-test.txt
-certifi==2021.10.8
+certifi==2022.12.7
     # via requests
 charset-normalizer==2.0.12
     # via requests
