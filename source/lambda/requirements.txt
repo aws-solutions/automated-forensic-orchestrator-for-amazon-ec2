@@ -28,7 +28,7 @@ charset-normalizer==2.0.12
     #   requests
 codeguru-profiler-agent==1.2.4
     # via -r lambda/requirements.txt
-future==0.18.2
+future==0.18.3
     # via
     #   -r lambda/requirements.txt
     #   aws-xray-sdk
