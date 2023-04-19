@@ -16,8 +16,6 @@ click==8.0.4
     # via
     #   black
     #   mkdocs
-codecov==2.1.12
-    # via -r requirements-test.txt
 coverage[toml]==6.3.2
     # via
     #   -r requirements-test.txt
@@ -75,7 +73,7 @@ pyflakes==2.4.0
     # via flake8
 pyparsing==3.0.7
     # via packaging
-pytest==7.0.1
+pytest==7.3.1
     # via
     #   -r requirements-test.txt
     #   pytest-cov
@@ -114,4 +112,6 @@ watchdog==2.1.6
 zipp==3.7.0
     # via importlib-metadata
 pytest-mock>=3.1.0
+
 pylint
+coverage
