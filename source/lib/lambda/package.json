@@ -5,7 +5,7 @@
     "author": "Amazon Web Services",
     "license": "Apache-2.0",
     "dependencies": {
-        "aws-sdk": "^2.799.0",
+        "aws-sdk": "^2.1366.0",
         "axios": "^0.25.0",
         "moment": "^2.29.2",
         "reflect-metadata": "^0.1.13",
