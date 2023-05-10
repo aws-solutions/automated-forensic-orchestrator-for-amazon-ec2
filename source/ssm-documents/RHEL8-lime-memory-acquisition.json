@@ -1,0 +1,110 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Linux instance to perform memory acquisition",
+    "parameters": {
+        "s3ArtifactLocation": {
+            "type": "String",
+            "description": "(Required) Artifact upload location",
+            "default": "S3 Artifact Upload Location"
+        },
+
+        "s3bucket": {
+            "type": "String",
+            "description": "(Required) Lime ko file location",
+            "default": "S3 bucket Location"
+        },
+        "limePath": {
+            "type": "String",
+            "description": "(Optional) Path to the LiME Kernel module on disk. If not provided, LiME will be downloaded and built",
+            "default": ""
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details",
+            "default": "ap-southeast-2"
+        },
+        "ExecutionTimeout": {
+            "type": "String",
+            "description": "(Required) SSM document execution timeout (seconds)",
+            "default": "1800"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "loadLime",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "{{ExecutionTimeout}}",
+                "runCommand": [
+                    "#!/bin/sh",
+                    "cd /tmp",
+                    "sudo yum install -yq python3.8 wget make git",
+                    "wget https://forensics.cert.org/cert-forensics-tools-release-el8.rpm",
+                    "sudo yum localinstall -y cert-forensics-tools-release-el8.rpm",
+                    "sudo rpm -Uvh cert-forensics-tools-release*rpm",
+                    "wget https://forensics.cert.org/centos/cert/8/x86_64/musl-libc-1.2.1-1.el8.x86_64.rpm",
+                    "sudo yum localinstall -y musl-libc-1.2.1-1.el8.x86_64.rpm",
+                    "wget https://forensics.cert.org/centos/cert/8/x86_64/musl-devel-1.2.1-1.el8.x86_64.rpm",
+                    "sudo yum localinstall -y musl-devel-1.2.1-1.el8.x86_64.rpm",
+                    "sudo yum install -yq musl-gcc",
+                    "kernel_release=$(uname -r)",
+                    "kernel_name=$(uname -s)",
+                    "sudo pip3 install awscli",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "mkdir -p /tmp/forensic_tools",
+                    "cd /tmp/forensic_tools",
+                    "curl https://musl.libc.org/releases/musl-1.2.2.tar.gz -o musl-1.2.2.tar.gz",
+                    "tar -xvf musl-1.2.2.tar.gz",
+                    "cd musl-1.2.2",
+                    "./configure",
+                    "make",
+                    "sudo make install",
+                    "cd /tmp/forensic_tools",
+                    "curl https://sh.rustup.rs -sSf | sh -s -- --no-modify-path -y",
+                    "sleep 5",
+                    "export PATH=/root/.cargo/bin:$PATH",
+                    "rustup target add x86_64-unknown-linux-musl",
+                    "cd /tmp/forensic_tools",
+                    "git clone https://github.com/microsoft/avml.git",
+                    "cd avml",
+                    "cargo build --release --target x86_64-unknown-linux-musl",
+                    "sudo ./target/x86_64-unknown-linux-musl/release/avml  output.lime",
+                    "echo copying...to {{s3ArtifactLocation}}/$kernel_release.lime",
+
+                    "aws configure set default.s3.max_concurrent_requests 20",
+
+                    "MEMSIZE=`awk '/MemTotal/ {print $2/1024/1024}' /proc/meminfo`",
+                    "S3_EXPECTED_SIZE=`awk '/MemTotal/ {print $2*1024}' /proc/meminfo`",
+                    "ACL_FLAG=\"--acl bucket-owner-full-control\"",
+                    "METADATA_FLAG=\"--metadata uncompressed-size=$MEMSIZE,kernel-name=$kernel_name,kernel-release=$kernel_release\"",
+                    "EXPECTED_SIZE_FLAG=\"--expected-size $S3_EXPECTED_SIZE\"",
+                    "aws s3 cp output.lime {{s3ArtifactLocation}}/ $EXPECTED_SIZE_FLAG $METADATA_FLAG $ACL_FLAG",
+                    "sha256sum output.lime > lime_sha256.txt",
+                    "aws s3 cp lime_sha256.txt {{s3ArtifactLocation}}/ $ACL_FLAG",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}

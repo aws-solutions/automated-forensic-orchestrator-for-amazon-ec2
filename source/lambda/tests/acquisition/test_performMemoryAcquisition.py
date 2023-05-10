@@ -41,7 +41,9 @@ def setupevent(request):
                 "forensicId": "1c5b3574-8e67-4fc8-a34e-fe480534ccc1",
                 "isAcquisitionRequired": True,
                 "instanceInfo": {
-                    "PlatformDetails": "Linux/UNIX",
+                    "PlatformName": "Red Hat Enterprise Linux",
+                    "PlatformType": "Linux",
+                    "PlatformVersion": "8.5",
                 },
             },
             "statusCode": 200,
@@ -402,6 +404,7 @@ def mock_connection_sts():
         "LINUX_LIME_MEMORY_ACQUISITION": "documentName",
         "SSM_EXECUTION_TIMEOUT": "1800",
         "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "RHEL8_LIME_MEMORY_ACQUISITION": "rhel8_doc",
     },
 )
 def test_happy_path_flow_trigger_event():
@@ -493,6 +496,7 @@ def test_happy_path_flow_trigger_event():
         "LIME_MEMORY_ACQUISITION": "documentName",
         "SSM_EXECUTION_TIMEOUT": "1800",
         "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+        "RHEL8_LIME_MEMORY_ACQUISITION": "rhel8_doc",
     },
 )
 def test_remote_exception():

@@ -1,0 +1,111 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Linux instance to perform memory load investigation",
+    "parameters": {
+        "s3Location": {
+            "type": "String",
+            "description": "S3 location to load the results into bucket",
+            "default": "aws s3 cp - s3://{3}/{1}/{2}/{0}/memory/{0}.raw"
+        },
+        "s3DownloadCommands": {
+            "type": "String",
+            "description": "(Required)command to down from S3 bucket.",
+            "default": "aws s3 cp - s3://{3}/{1}/{2}/{0}/memory/{0}.raw"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "forensicID": {
+            "type": "String",
+            "description": "(Required) forensicID of memory acquisition",
+            "default": "session Token"
+        },
+        "s3Bucket": {
+            "type": "String",
+            "description": "(Required) S3 bucket location of captured memory",
+            "default": "S3 Bucket Name"
+        },
+        "s3MemoryCaptureKey": {
+            "type": "String",
+            "description": "Prefix of Memory capture",
+            "default": "/InstanceID/forensicID"
+        },
+        "s3ProfileLocation": {
+            "type": "String",
+            "description": "Prefix of Volatility profile",
+            "default": "volatility2/profiles/"
+        },
+        "s3ProfileBucket": {
+            "type": "String",
+            "description": "OS Profile for bucket",
+            "default": "S3 Bucket Name"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details.",
+            "default": "ap-southeast-2"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "4000",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+
+                    "cd /tmp",
+                    "mkdir forensic-analysis",
+                    "cd forensic-analysis",
+                    "mkdir -p /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/",
+                    "mkdir -p /tmp/forensic-analysis/data/{{forensicID}}_working_dir/",
+                    "if [ ! -d \"volatility3\" ]",
+                    "then",
+                    "git clone https://github.com/volatilityfoundation/volatility3.git",
+                    "cd volatility3/",
+                    "sudo pip3 install -r requirements-minimal.txt",
+                    "sudo python3 setup.py build ",
+                    "else",
+                    "echo volatility3 exists, skip building",
+                    "cd volatility3/",
+                    "fi",
+
+                    "pip3 install pyOpenSSL --upgrade",
+                    "aws s3 cp s3://{{s3ProfileBucket}}/volatility3/symbols/ volatility3/symbols/linux/ --recursive",
+
+                    "aws s3 cp s3://{{s3ProfileBucket}}/{{s3MemoryCaptureKey}}/output.lime /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime",
+                    "python3 vol.py -f /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime linux.bash.Bash > /tmp/forensic-analysis/data/{{forensicID}}_working_dir/vol3-output-linux_bash.txt",
+                    "python3 vol.py -f /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime linux.psaux.PsAux > /tmp/forensic-analysis/data/{{forensicID}}_working_dir/vol3-output-linux_psaux.txt",
+                    "python3 vol.py -f /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime linux.pslist > /tmp/forensic-analysis/data/{{forensicID}}_working_dir/vol3-output-linux_pslist.txt",
+                    "python3 vol.py -f /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime linux.psscan.PsScan > /tmp/forensic-analysis/data/{{forensicID}}_working_dir/vol3-output-linux_psscan.txt",
+                    "cd /tmp/forensic-analysis/data/{{forensicID}}_working_dir/",
+                    "for f in $(ls vol3-output*.txt); do sha256sum \"$f\" > \"$(basename $f .txt)_sha256.txt\"; done",
+                    "cd /tmp/forensic-analysis/data/{{forensicID}}_working_dir/",
+                    "aws s3 cp /tmp/forensic-analysis/data/{{forensicID}}_working_dir/ {{s3Location}}  --recursive",
+                    "echo s3 cp complete",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}

@@ -466,6 +466,17 @@ put_item_fn = MagicMock(return_value={})
 transact_write_item_fn = MagicMock(return_value={})
 get_item_fn = MagicMock(return_value=get_item_event())
 update_item_fn = MagicMock(return_value=get_update_record_event())
+describe_instance_information_fn = MagicMock(
+    return_value={
+        "InstanceInformationList": [
+            {
+                "PlatformVersion": "8.0",
+                "PlatformName": "RHEL",
+                "PlatformType": "LINUX",
+            }
+        ]
+    }
+)
 
 
 def mock_connection(describe_instance_fn):
@@ -479,6 +490,7 @@ def mock_connection(describe_instance_fn):
     mockClient.get_item = get_item_fn
     mockClient.update_item = update_item_fn
     mockClient.transact_write_items = transact_write_item_fn
+    mockClient.describe_instance_information = describe_instance_information_fn
 
     return mockClient
 

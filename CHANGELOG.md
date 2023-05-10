@@ -1,5 +1,15 @@
 # Automated Forensics for Amazon EC2 Release Changelog
 
+## [1.2.0] - 2023-05-06
+
+### Changed
+- Red hat linux support, version 8.5
+- Windows memory capture support for windows server 2016 and server 2019
+- Update new profile building step functions
+- Bug fixes for existing san sift images
+- Improved logging 
+- Improved customization for user defined ssm document.
+
 ## [1.1.0] - 2022-11-22
 
 ### Changed

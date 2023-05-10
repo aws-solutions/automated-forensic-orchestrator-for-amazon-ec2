@@ -14,10 +14,16 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 */
-import { CfnMapping, CustomResource, Stack } from 'aws-cdk-lib';
+import { CfnMapping, CustomResource, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { ITable } from 'aws-cdk-lib/aws-dynamodb';
 import { IVpc } from 'aws-cdk-lib/aws-ec2';
-import { Effect, IRole, PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import {
+    Effect,
+    IRole,
+    PolicyStatement,
+    Role,
+    ServicePrincipal,
+} from 'aws-cdk-lib/aws-iam';
 import { IFunction } from 'aws-cdk-lib/aws-lambda';
 import { IBucket } from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
@@ -25,6 +31,19 @@ import { Dashboard } from 'aws-cdk-lib/aws-cloudwatch';
 import { PythonLambdaConstruct } from '../infra-utils/aws-python-lambda-construct';
 import { IQueue } from 'aws-cdk-lib/aws-sqs';
 import { APP_ACCOUNT_ASSUME_ROLE_NAME, TOOLS_AMI } from '../infra-utils/infra-types';
+import {
+    Chain,
+    Choice,
+    Condition,
+    LogLevel,
+    StateMachine,
+    Wait,
+    WaitTime,
+} from 'aws-cdk-lib/aws-stepfunctions';
+import { Topic } from 'aws-cdk-lib/aws-sns';
+import { LambdaInvoke } from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import { ILogGroup } from 'aws-cdk-lib/aws-logs';
+import { Key } from 'aws-cdk-lib/aws-kms';
 
 export interface ForensicsInvestigationProps {
     forensicDeadLetterQueue: IQueue;
@@ -42,6 +61,7 @@ export interface ForensicsInvestigationProps {
     dashboard?: Dashboard;
     forensicApiResources?: string[];
     forensicImageName: string;
+    forensicLogGroup: ILogGroup;
 }
 
 /**
@@ -448,6 +468,12 @@ export class ForensicsInvestigationConstruct extends Construct {
             };
         } = this.node.tryGetContext(TOOLS_AMI);
 
+        this.createKernelBuildingStepFunction(
+            props,
+            createInstancePolicies,
+            investigationAdditionalPolicies
+        );
+
         const toolsAMITable = new CfnMapping(this, 'tools-ami-table', {
             mapping: toolsAMI,
         });
@@ -493,5 +519,178 @@ export class ForensicsInvestigationConstruct extends Construct {
                 Id: 'ForensicLoaderAction',
             },
         });
+    }
+
+    private createKernelBuildingStepFunction(
+        props: ForensicsInvestigationProps,
+        createInstancePolicies: PolicyStatement[],
+        investigationAdditionalPolicies: PolicyStatement[]
+    ) {
+        const snsTopic = new Topic(this, 'ForensicToolTopic', {
+            masterKey: new Key(this, `CMKKey`, {
+                description: `KMS Key for ForensicToolTopic`,
+                alias: `builder-tool-topic`,
+                enableKeyRotation: true,
+                removalPolicy: RemovalPolicy.DESTROY,
+            }),
+        });
+        const forensicKernelLoaderLambda = new PythonLambdaConstruct(
+            this,
+            'forensicKernelLoaderLambda',
+            {
+                handler: 'src.kernelloader.kernelSymbolLoader.handler',
+                applicationName: 'kernelLoader',
+                functionName: 'Fo-forensicKernelSymbolLambda',
+                environment: {
+                    ...props.environment,
+                    VPC_ID: props.vpc.vpcId,
+                    FORENSIC_INSTANCE_PROFILE: props.instanceProfileARN,
+                    S3_BUCKET_NAME: props.forensicBucket.bucketName,
+                    S3_COPY_ROLE: props.s3CopyRole.roleArn,
+                    APP_ACCOUNT_ROLE: `${APP_ACCOUNT_ASSUME_ROLE_NAME}-${
+                        Stack.of(this).region
+                    }`,
+                },
+                initialPolicy: [
+                    ...createInstancePolicies,
+                    ...investigationAdditionalPolicies,
+                ],
+                dashboard: props.dashboard,
+                vpc: props.vpc,
+                deadLetterQueue: props.forensicDeadLetterQueue,
+            }
+        ).function;
+        forensicKernelLoaderLambda.role?.grantPassRole(props.s3CopyRole);
+
+        const startBuilderInstance = new LambdaInvoke(this, 'Start builder instance', {
+            lambdaFunction: forensicKernelLoaderLambda,
+        });
+        const waitState = new Wait(this, 'Wait for Profile building', {
+            time: WaitTime.duration(Duration.minutes(5)),
+        });
+
+        const instanceBuildingStateCheckFN = new PythonLambdaConstruct(
+            this,
+            'forensicCheckInstanceBuildingLambda',
+            {
+                handler: 'src.kernelchecker.checkBuildingState.handler',
+                applicationName: 'forensicCheckInstanceBuildingStateLambda',
+
+                functionName: 'Fo-forensicCheckInstanceBuildingSateLambda',
+                environment: {
+                    ...props.environment,
+                    INSTANCE_TABLE_NAME: props.instanceTable.tableName,
+                    S3_BUCKET_NAME: props.forensicBucket.bucketName,
+                    S3_COPY_ROLE: props.s3CopyRole.roleArn,
+                },
+                initialPolicy: [
+                    ...investigationAdditionalPolicies,
+                    ...createInstancePolicies,
+                ],
+                dashboard: props.dashboard,
+                vpc: props.vpc,
+                deadLetterQueue: props.forensicDeadLetterQueue,
+            }
+        );
+
+        const stopBuildingInstanceFN = new PythonLambdaConstruct(
+            this,
+            'forensiStopKernelBuilderInstance',
+            {
+                handler: 'src.kernelInstance.terminator.handler',
+                applicationName: 'forensicStopBuildingStateLambda',
+
+                functionName: 'Fo-forensicStopeBuildingSateLambda',
+                environment: {
+                    ...props.environment,
+                    INSTANCE_TABLE_NAME: props.instanceTable.tableName,
+                    S3_BUCKET_NAME: props.forensicBucket.bucketName,
+                    S3_COPY_ROLE: props.s3CopyRole.roleArn,
+                },
+                initialPolicy: [
+                    ...investigationAdditionalPolicies,
+                    ...createInstancePolicies,
+                ],
+                dashboard: props.dashboard,
+                vpc: props.vpc,
+                deadLetterQueue: props.forensicDeadLetterQueue,
+            }
+        );
+
+        const isInstanceBuildingCompleted = new Choice(
+            this,
+            'Is instance building completed'
+        );
+        const checkInstanceBuildingCompletion = new LambdaInvoke(
+            this,
+            'Check for Instance profile building',
+            {
+                lambdaFunction: instanceBuildingStateCheckFN.function,
+            }
+        );
+        const role = new Role(this, 'Role', {
+            assumedBy: new ServicePrincipal('states.amazonaws.com'),
+        });
+        role.addToPolicy(
+            new PolicyStatement({
+                resources: [snsTopic.topicArn],
+                actions: ['kms:GenerateDataKey*', 'kms:Decrypt', 'kms:Get*'],
+                effect: Effect.ALLOW,
+            })
+        );
+
+        const stopInstance = new LambdaInvoke(this, 'Stop instance', {
+            lambdaFunction: stopBuildingInstanceFN.function,
+        });
+
+        const chain = Chain.start(
+            startBuilderInstance.next(
+                waitState.next(
+                    checkInstanceBuildingCompletion.next(
+                        isInstanceBuildingCompleted
+                            .when(
+                                Condition.booleanEquals(
+                                    '$.Payload.body.isInstanceProfileBuildingComplete',
+                                    true
+                                ),
+                                stopInstance
+                            )
+                            .when(
+                                Condition.booleanEquals(
+                                    '$.Payload.body.isInstanceProfileBuildingComplete',
+                                    false
+                                ),
+                                waitState
+                            )
+                            .otherwise(waitState)
+                    )
+                )
+            )
+        );
+
+        const profileBuilderStepFunction = new StateMachine(
+            this,
+            'ForensicsProfileBuilderStateMachine',
+            {
+                definition: chain,
+                stateMachineName: 'Forensic-Profile-Function',
+                tracingEnabled: true,
+                logs: {
+                    destination: props.forensicLogGroup,
+                    level: LogLevel.ALL,
+                    includeExecutionData: true,
+                },
+            }
+        );
+
+        profileBuilderStepFunction.grantTaskResponse(role);
+
+        profileBuilderStepFunction.addToRolePolicy(
+            new PolicyStatement({
+                resources: [snsTopic.topicArn],
+                actions: ['kms:GenerateDataKey*', 'kms:Decrypt', 'kms:Get*'],
+                effect: Effect.ALLOW,
+            })
+        );
     }
 }

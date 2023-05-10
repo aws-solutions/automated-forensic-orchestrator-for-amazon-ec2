@@ -470,6 +470,7 @@ export class ForensicsSolutionsConstructsStack extends Stack {
                     }),
                 }),
                 ebsEncryptionKeyID: this.kmsKeys.volumeEncryptionKey.key.keyArn,
+                forensicLogGroup: this.forensicLogGroup,
             }
         );
         forensicDataSource.forensicInstanceTable.grantReadWriteData(

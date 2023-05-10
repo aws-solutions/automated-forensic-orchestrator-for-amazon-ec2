@@ -204,7 +204,6 @@ export class ForensicsCore extends Construct {
                     SOLUTION_ACCOUNT_ISOLATION_INSTANCE_PROFILE_NAME:
                         solutionAccountIsolationProfileName,
                 },
-                skipCodeSigning: true,
                 initialPolicy: [...additionalPolicies, ...isolationPolicies],
                 dashboard: props.dashboard,
                 vpc: props.vpc,
@@ -239,7 +238,6 @@ export class ForensicsCore extends Construct {
                     Stack.of(this).region
                 }`,
             },
-            skipCodeSigning: true,
             initialPolicy: [...additionalPolicies],
             dashboard: props.dashboard,
             vpc: props.vpc,

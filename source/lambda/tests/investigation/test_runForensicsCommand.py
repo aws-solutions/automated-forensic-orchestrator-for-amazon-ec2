@@ -60,6 +60,9 @@ def setupevent(request):
                 "VolumeArtifactMap": {
                     "vol-12345": "391b775f-21f5-41ad-af70-62e77c518eaa"
                 },
+                "instanceInfo": {
+                    "PlatformDetails": "Windows",
+                },
             }
         },
         "StatusCode": 200,
@@ -428,6 +431,7 @@ def mock_connection(ec_response):
         "S3_BUCKET_NAME": "BUCKET_FORENSICS",
         "S3_COPY_ROLE": "arn:s3copRole",
         "LINUX_DISK_INVESTIGATION": "documentName",
+        "WINDOWS_DISK_INVESTIGATION": "win_doc",
     },
 )
 def test_trigger_event():
@@ -450,6 +454,7 @@ def test_trigger_event():
         "S3_BUCKET_NAME": "BUCKET_FORENSICS",
         "S3_COPY_ROLE": "arn:s3copRole",
         "LINUX_DISK_INVESTIGATION": "documentName",
+        "WINDOWS_DISK_INVESTIGATION": "win_doc",
     },
 )
 def test_error_flowtrigger_event():

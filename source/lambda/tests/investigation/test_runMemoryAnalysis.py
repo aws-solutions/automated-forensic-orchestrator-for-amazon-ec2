@@ -41,6 +41,11 @@ def setupevent(request):
         "ExecutedVersion": "$LATEST",
         "Payload": {
             "body": {
+                "instanceInfo": {
+                    "PlatformName": "Red Hat Enterprise Linux",
+                    "PlatformType": "Linux",
+                    "PlatformVersion": "8.5",
+                },
                 "ForensicInstanceId": "i-0bf2bf6b175654c6e",
                 "ForensicInvestigationInstanceId": "i-0b3daeccbc7e52246",
                 "MemoryForensics": {
@@ -441,6 +446,8 @@ def mock_connection(ec_response):
         "S3_BUCKET_NAME": "BUCKET_FORENSICS",
         "S3_COPY_ROLE": "arn:s3copRole",
         "LIME_MEMORY_LOAD_INVESTIGATION": "documentName",
+        "RHEL8_LIME_MEMORY_LOAD_INVESTIGATION": "doc_name",
+        "WINDOWS_LIME_MEMORY_LOAD_INVESTIGATION": "win_doc_name",
     },
 )
 def test_trigger_event():
@@ -463,6 +470,8 @@ def test_trigger_event():
         "S3_BUCKET_NAME": "BUCKET_FORENSICS",
         "S3_COPY_ROLE": "arn:s3copRole",
         "LIME_MEMORY_LOAD_INVESTIGATION": "documentName",
+        "RHEL8_LIME_MEMORY_LOAD_INVESTIGATION": "doc_name",
+        "WINDOWS_LIME_MEMORY_LOAD_INVESTIGATION": "win_doc_name",
     },
 )
 def test_error_flowtrigger_event():

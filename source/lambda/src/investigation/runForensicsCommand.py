@@ -40,9 +40,7 @@ def handler(event, _):
     """
     region = os.environ["AWS_REGION"]
     s3_bucket_name = os.environ["S3_BUCKET_NAME"]
-    linux_disk_investigation_document_name = os.environ[
-        "LINUX_DISK_INVESTIGATION"
-    ]
+    disk_investigation_document_name = os.environ["LINUX_DISK_INVESTIGATION"]
     fds = ForensicDataService(
         ddb_client=create_aws_client("dynamodb"),
         ddb_table_name=os.environ["INSTANCE_TABLE_NAME"],
@@ -60,6 +58,13 @@ def handler(event, _):
     s3_role_arn = os.environ["S3_COPY_ROLE"]
     forensic_type = input_body["forensicType"]
     output_body = input_body.copy()
+    platform_details = input_body.get("instanceInfo").get("PlatformDetails")
+    parser_id = "linux"
+    if platform_details == "Windows":
+        parser_id = "winevt,winevtx,winprefetch"
+        disk_investigation_document_name = os.environ[
+            "WINDOWS_DISK_INVESTIGATION"
+        ]
     try:
 
         volume_list = input_body["forensicAttachedVolumeInfo"]
@@ -118,13 +123,13 @@ def handler(event, _):
                             attached_volume_id,
                         )
                     ],
-                    "ParserID": ["linux"],
+                    "ParserID": [parser_id],
                     "TargetVolume": [f"{volume_number}"],
                 }
                 logger.info(params)
                 response = ssm_client.send_command(
                     InstanceIds=[forensic_investigation_instance_id],
-                    DocumentName=linux_disk_investigation_document_name,
+                    DocumentName=disk_investigation_document_name,
                     Comment="Disk Analysis for " + instance_id,
                     Parameters=params,
                     CloudWatchOutputConfig={
@@ -151,7 +156,7 @@ def handler(event, _):
                         forensic_id,
                         attached_volume_id,
                     ),
-                    "SSMDocumentName": linux_disk_investigation_document_name,
+                    "SSMDocumentName": disk_investigation_document_name,
                     "CommandInputArtifactId": volume_artifact_map[
                         attached_volume_id
                     ],

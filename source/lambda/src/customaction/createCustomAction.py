@@ -82,7 +82,10 @@ def send_status_to_cfn(
             )
         else:
             response = requests.put(
-                response_url, data=json_response_body, headers=headers
+                response_url,
+                data=json_response_body,
+                headers=headers,
+                timeout=10,
             )
             logger.info(response)
             if "reason" in response:

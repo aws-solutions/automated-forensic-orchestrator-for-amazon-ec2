@@ -44,7 +44,7 @@ export class SolutionMetricsCollectorConstruct extends Construct {
             'MetricsCollectorFunction',
             {
                 description: `${props.solutionDisplayName} (${props.version}): metrics collection function`,
-                runtime: lambda.Runtime.NODEJS_14_X,
+                runtime: lambda.Runtime.NODEJS_16_X,
                 code: lambda.Code.fromAsset(
                     path.resolve(__dirname, '../../lib/lambda/dist/lambda')
                 ),

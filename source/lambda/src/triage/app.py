@@ -102,6 +102,29 @@ def lambda_handler(event, context):
             retrieve_instance_info(logger, ec2_client, instance_id)
         )
 
+        ssm_client = create_aws_client(
+            "ssm",
+            current_account=current_account,
+            target_account=instance_account,
+            target_region=instance_region,
+            app_account_role=app_account_role,
+        )
+        filter_by_id = [{"Key": "InstanceIds", "Values": [instance_id]}]
+        instance_platform_info = ssm_client.describe_instance_information(
+            Filters=filter_by_id
+        )
+        instance_list = instance_platform_info.get(
+            "InstanceInformationList", {}
+        )
+        if len(instance_list) == 0:
+            raise Exception("not able to accuire instance detail info")
+        platform_type = instance_list[0].get("PlatformType", "")
+        platform_name = instance_list[0].get("PlatformName", "")
+        platform_version = instance_list[0].get("PlatformVersion", "")
+
+        instance_info["PlatformType"] = platform_type
+        instance_info["PlatformName"] = platform_name
+        instance_info["PlatformVersion"] = platform_version
         logger.info("Retrieved instance info {0}".format(instance_info))
 
         fds.add_forensic_timeline_event(

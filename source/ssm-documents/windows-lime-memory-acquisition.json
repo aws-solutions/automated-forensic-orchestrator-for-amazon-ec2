@@ -2,40 +2,21 @@
     "schemaVersion": "2.2",
     "description": "Run a script on Windows instance to prepare for Memory acquisition.",
     "parameters": {
-        "s3Location": {
+        "s3ArtifactLocation": {
             "type": "String",
-            "description": "S3 location to load the results into bucket",
-            "default": "aws s3 cp - s3://{3}/{1}/{2}/{0}/memory/{0}.raw"
-        },
-        "attachedVolumeId": {
-            "type": "String",
-            "description": "(Required)Volume Details.",
-            "default": "attachedVolumeId"
-        },
-        "attachedVolumeMountInfo": {
-            "type": "String",
-            "description": "(Required)Volume Details.",
-            "default": "Volumedetails"
+            "description": "(Required) Artifact upload location"
         },
         "AccessKeyId": {
             "type": "String",
-            "description": "(Required) AccesskeyID to store evidence details in S3.",
-            "default": "Access key ID"
+            "description": "(Required) AccesskeyID to store evidence details in S3."
         },
         "SecretAccessKey": {
             "type": "String",
-            "description": "(Required) SecretAccessKey to store evidence details in S3",
-            "default": "secret access key"
+            "description": "(Required) SecretAccessKey to store evidence details in S3"
         },
         "SessionToken": {
             "type": "String",
-            "description": "(Required) SessionToken to store evidence details in S3.",
-            "default": "session Token"
-        },
-        "forensicID": {
-            "type": "String",
-            "description": "(Required) forensicID of memory acquisition",
-            "default": "session Token"
+            "description": "(Required) SessionToken to store evidence details in S3."
         },
         "Region": {
             "type": "String",
@@ -43,40 +24,42 @@
             "default": "ap-southeast-2"
         }
     },
+
     "mainSteps": [
         {
-            "action": "aws:runShellScript",
+            "action": "aws:runPowerShellScript",
             "name": "runCommands",
             "precondition": {
-                "StringEquals": ["platformType", "Linux"]
+                "StringEquals": ["platformType", "Windows"]
             },
             "inputs": {
-                "timeoutSeconds": "400",
+                "timeoutSeconds": "1000",
                 "runCommand": [
-                    "#!/bin/bash",
-                    "cd /tmp",
+                    "cd C:\\",
                     "mkdir forensic-analysis",
                     "cd forensic-analysis",
-                    "mkdir -p /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/",
-                    "mkdir -p /tmp/forensic-analysis/data/{{forensicID}}_working_dir/",
-                    "cd data/{{forensicID}}_evidence_dir/",
-                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
-                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
-                    "export AWS_SESSION_TOKEN={{SessionToken}}",
-                    "export AWS_DEFAULT_REGION={{Region}}",
-                    "apt  install awscli -y",
-                    "pip3 install awsebcli --upgrade",
-                    "pip3 install --upgrade awscli",
-                    "aws configure set default.s3.max_concurrent_requests 100",
-                    "ls",
-                    "cd /tmp/forensic-analysis/data/{{forensicID}}_working_dir/",
-                    "log2timeline.py -u --status_view none --partitions all --hashers md5 --hasher_file_size_limit 1073741824 --logfile log2timeline-{{attachedVolumeId}}.log.gz --storage_file log2timeline_{{attachedVolumeId}}.plaso attachedVolumeMountInfo",
-                    "psort.py -u --status_view none -o dynamic --dynamic-time --fields datetime,date,time,timezone,macb,type,source,sourcetype,user,hostname,description,filename,inode,md5_hash -w log2timeline_{{attachedVolumeId}}_output.csv /log2timeline_{{attachedVolumeId}}.plaso",
-                    "ls",
-                    "sha256sum log2timeline_{{attachedVolumeId}}_output.csv > log2timeline_{{attachedVolumeId}}_output_sha256.txt ",
-                    "aws s3 cp /tmp/forensic-analysis/data/{{forensicID}}_working_dir/ {{s3Location}}  --recursive",
-                    "echo s3 cp complete",
-                    "ls -ltr",
+                    "$env:AWS_ACCESS_KEY_ID=\"{{ AccessKeyId }}\"",
+                    "$env:AWS_SECRET_ACCESS_KEY=\"{{ SecretAccessKey }}\"",
+                    "$env:AWS_SESSION_TOKEN=\" {{ SessionToken }}\"",
+                    "$env:AWS_DEFAULT_REGION={{ Region }}",
+                    "echo 'checking crential'",
+                    "echo $(Get-Item -Path Env:\\AWS_ACCESS_KEY_ID)",
+                    "echo $(Get-Item -Path Env:\\AWS_SECRET_ACCESS_KEY)",
+                    "echo 'eching id passed in'",
+                    "echo {{ AWS_ACCESS_KEY_ID }}",
+
+                    "Start-Process -FilePath \"msiexec.exe\" -ArgumentList \"/i https://awscli.amazonaws.com/AWSCLIV2.msi /qn\" -Wait",
+                    "$env:Path=[System.Environment]::GetEnvironmentVariable(\"Path\",\"Machine\")",
+                    "echo 'aws cli installed'",
+                    "echo $(aws sts get-caller-identity)",
+                    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12",
+                    "Invoke-WebRequest -Uri  https://github.com/Velocidex/WinPmem/releases/download/v4.0.rc1/winpmem_mini_x64_rc2.exe -OutFile winp.exe",
+                    "echo 'winpmem installed and memory dumped'",
+                    ".\\winp.exe output.raw",
+                    "CertUtil -hashfile .\\output.raw SHA256 > raw_sha256.txt",
+                    "aws s3 cp output.raw {{s3ArtifactLocation}}/",
+                    "aws s3 cp raw_sha256.txt {{s3ArtifactLocation}}/",
+                    "echo 's3 cp complete'",
                     "exit 0;"
                 ]
             }

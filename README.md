@@ -58,19 +58,19 @@ _Tools_
     3. `npm run build:collector`
 6. To build the Forensic Stack to be deployed in the Forensic AWS Account:
 
-    `cdk synth -c account=<<Forensic AWS Account>> -c region=<<region>> -c secHubAccount=<<SecuHub Aggregator Account>> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
+    `cdk synth -c account=<Forensic AWS Account Number> -c region=<Region> -c sechubaccount=<Security Hub Aggregator Account Number> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
 
     Example:
 
-    `cdk synth -c account=123456789012 -c secHubAccount=123456789012 -c region=us-east-1 -c STACK_BUILD_TARGET_ACCT=forensicAccount`
+    `cdk synth -c account=1234567890 -c sechubaccount=0987654321 -c region=us-east-1 -c STACK_BUILD_TARGET_ACCT=forensicAccount`
 
 7. To deploy the Forensic Stack in the Forensic AWS Account:
 
-    `cdk deploy --all -c account=<<Forensic AWS Account>> -c region=us-east-1 --require-approval=never -c secHubAccount=<<SecuirtyHub Aggregator AWS Account>>` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
+    `cdk deploy --all -c account=<Forensic AWS Account Number> -c region=<Region> --require-approval=never -c sechubaccount=<Security Hub Aggregator AWS Account Number> -c STACK_BUILD_TARGET_ACCT=forensicAccount` Deploy the necessary CDK CFN templates for deploying Forensic Solutions stack
 
     Example:
 
-    `cdk deploy ——all -c secHubAccount=123456789012 -c STACK_BUILD_TARGET_ACCT=forensicAccount -c account=1234567890 -c region=ap-southeast-2 —require-approval=never`
+    `cdk deploy --all -c sechubaccount=0987654321 -c STACK_BUILD_TARGET_ACCT=forensicAccount -c account=1234567890 -c region=us-east-1 --require-approval=never`
 
 ### SecurityHub Aggregator account deployment
 
@@ -80,7 +80,7 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
 
 1. Clone the solution source code from its GitHub repository.
    `git clone https://github.com/aws-solutions/automated-forensic-orchestrator-for-amazon-ec2.git`
-2. Open the terminal and navigate to the folder created in step 1, and then navigate to the source folder.
+2. Open the terminal and navigate to the folder created in step 1, and then navigate to the `source` folder.
 3. Set AWS Credentials to deploy into the AWS Account
     - export AWS_ACCESS_KEY_ID=<<XXXXXXXXXXXXXXXX>>
     - export AWS_SECRET_ACCESS_KEY=<<XXXXXXXXXXXXXXXXXXX>>
@@ -88,11 +88,10 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
     - export AWS_REGION=<<AWS Region - us-east-1>>
 4. Run the following commands in the same order as below:
     1. `npm ci`
-    2. `npm run build-lambda`
-    3. `npm run build:collector`
+    2. `npm run build`
 5. To build the Forensic Stack to be deployed in the SecurityHub Aggregator account:
 
-    `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=us-east-1 -c sechubregion=us-east-1 -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
+    `cdk synth -c sechubaccount=<SecHub Account Number> -c forensicAccount=<ForensicAccount> -c forensicRegion=us-east-1 -c sechubregion=us-east-1 -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
 
     Example:
 
@@ -100,11 +99,11 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
 
 6. To deploy the Forensic Stack in the SecurityHub Aggregator account:
 
-    `cdk deploy --all -c account=<<SecuirtyHub AWS Account>> -c region=us-east-1 --require-approval=never -c forensicAccount=<<Forensic AWS Account>>` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
+    `cdk deploy --all -c sechubaccount=0987654321 -c account=<Security Hub AWS AccountNumber> -c region=us-east-1 --require-approval=never -c forensicAccount=<Forensic AWS AccountNumber> -c STACK_BUILD_TARGET_ACCT=securityHubAccount -c sechubregion=us-east-1` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
     Example:
 
-    `cdk deploy --all -c account=0987654321 -c region=us-east-1 --require-approval=never -c forensicAccount=1234567890` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
+    `cdk deploy --all -c sechubaccount=0987654321 -c account=0987654321 -c region=us-east-1 --require-approval=never -c forensicAccount=1234567890 -c STACK_BUILD_TARGET_ACCT=securityHubAccount -c sechubregion=us-east-1` Deploy the necessary CDK CFN templates for deploying SecurityHub stack
 
 ### Application account deployment
 
@@ -297,6 +296,20 @@ This script is called from the solution build scripts to ensure that specified t
 ## Collection of operational metrics
 
 This solution collects anonymous operational metrics to help AWS improve the quality and features of the solution. For more information, including how to disable this capability, please see the [implementation guide](deep link into the documentation with specific information about the metrics and how to opt-out).
+
+## Build RHEL kernel symbol for memory analytics support of Red Hat Enterprise Linux 8
+1. after deploy the solution, go to the solution aws account
+2. goto aws console `Step Functions` find stepfunction `Forensic-Profile-Function`
+3. trigger the build by adding input as follow
+```
+{
+  "amiId": "ami-0b6c020bf93af9ce1",
+  "distribution": "RHEL8"
+}
+```
+where ami-0b6c020bf93af9ce1 is the base image AMI for RHEL8, you need a RedHat subscription to do that. see more on https://www.redhat.com/en/store/linux-platforms
+4. the stepfunction will take care of the symbol building process, once it's done the forensic solution will be able to support RHEL8
+
 
 ## Useful commands
 

@@ -36,7 +36,7 @@ instance_id = ""
 @xray_recorder.capture("Perform Memory Acquisition")
 def handler(event, context):
     """
-    Lambda function handler for performing Disk Forensics - Perform Snapshot
+    Lambda function handler for performing memory Forensics - Memory acquisition
     """
     # implementation Payload
     input_body = event["Payload"]["body"]
@@ -91,25 +91,45 @@ def handler(event, context):
         windows_memory_acquisition_document_name = os.environ[
             "WINDOWS_LIME_MEMORY_ACQUISITION"
         ]
-        ssm_execution_timeout = os.environ["SSM_EXECUTION_TIMEOUT"]
 
         logger.info("Lambda running")
-        platform_details = input_body.get("instanceInfo").get(
-            "PlatformDetails"
+
+        platform_name = input_body.get("instanceInfo").get("PlatformName")
+        platform_detail = input_body.get("instanceInfo").get("PlatformDetails")
+
+        platform_version = input_body.get("instanceInfo").get(
+            "PlatformVersion"
         )
 
-        if platform_details == "Windows":
+        if platform_detail == "Windows":
             memory_acquisition_document_name = (
                 windows_memory_acquisition_document_name
             )
+        elif platform_name == "Red Hat Enterprise Linux":
+            if 10 > float(platform_version) > 9:
+                rhel_version = "9"
+            if 9 > float(platform_version) > 8:
+                rhel_version = "8"
+            if 8 > float(platform_version) > 7:
+                rhel_version = "7"
+            memory_acquisition_document_name = os.environ[
+                "RHEL" + rhel_version + "_LIME_MEMORY_ACQUISITION"
+            ]
 
+        logger.info(
+            "invoking ssm document {0}".format(
+                memory_acquisition_document_name
+            )
+        )
         ssm_client_current_account.modify_document_permission(
             Name=memory_acquisition_document_name,
             PermissionType="Share",
             AccountIdsToAdd=[app_account_id],
         )
 
-        response = ssm_client.describe_instance_information()
+        response = ssm_client.describe_instance_information(
+            Filters=[{"Key": "InstanceIds", "Values": [instance_id]}]
+        )
 
         for item in response["InstanceInformationList"]:
             if item["InstanceId"] == instance_id:
@@ -176,18 +196,19 @@ def handler(event, context):
             )["Credentials"]
 
             params = {
-                "s3bucket": [s3bucket_name],
                 "AccessKeyId": [tokens["AccessKeyId"]],
                 "SecretAccessKey": [tokens["SecretAccessKey"]],
                 "SessionToken": [tokens["SessionToken"]],
                 "Region": [region],
-                "ExecutionTimeout": [ssm_execution_timeout],
                 "s3ArtifactLocation": [
                     "s3://{0}/memory/{1}/{2}".format(
                         s3bucket_name, instance_id, forensic_id
                     )
                 ],
             }
+            logger.info(
+                f"Performing memory acquisition for {platform_name} instance { instance_id }"
+            )
             response = ssm_client.send_command(
                 InstanceIds=[instance_id],
                 DocumentName=f"arn:aws:ssm:{region}:{current_account}:document/{memory_acquisition_document_name}",

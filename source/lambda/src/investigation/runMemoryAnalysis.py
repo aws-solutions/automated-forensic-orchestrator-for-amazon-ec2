@@ -39,10 +39,32 @@ def handler(event, _):
     """
     Lambda function handler for performing Memory Forensic Analysis
     """
+    input_body = event["Payload"]["body"]
     region = os.environ["AWS_REGION"]
     s3_bucket_name = os.environ["S3_BUCKET_NAME"]
     memory_load_document_name = os.environ["LIME_MEMORY_LOAD_INVESTIGATION"]
+    windows_memory_acquisition_document_name = os.environ[
+        "WINDOWS_LIME_MEMORY_LOAD_INVESTIGATION"
+    ]
 
+    platform_name = input_body.get("instanceInfo").get("PlatformName")
+
+    platform_version = input_body.get("instanceInfo").get("PlatformVersion")
+
+    platform_detail = input_body.get("instanceInfo").get("PlatformDetails")
+
+    if platform_detail == "Windows":
+        memory_load_document_name = windows_memory_acquisition_document_name
+    elif platform_name == "Red Hat Enterprise Linux":
+        if 10 > float(platform_version) > 9:
+            rhel_version = "9"
+        if 9 > float(platform_version) > 8:
+            rhel_version = "8"
+        if 8 > float(platform_version) > 7:
+            rhel_version = "7"
+        memory_load_document_name = os.environ[
+            "RHEL" + rhel_version + "_LIME_MEMORY_LOAD_INVESTIGATION"
+        ]
     fds = ForensicDataService(
         ddb_client=create_aws_client("dynamodb"),
         ddb_table_name=os.environ["INSTANCE_TABLE_NAME"],

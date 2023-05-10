@@ -1,0 +1,86 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Linux instances to create symbol details for volatility 3",
+    "parameters": {
+        "s3bucket": {
+            "type": "String",
+            "description": "(Required) S3 bucket details.",
+            "default": "S3 Bucket Name"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details",
+            "default": "ap-southeast-2"
+        },
+        "ExecutionTimeout": {
+            "type": "String",
+            "description": "(Required) SSM document execution timeout (seconds)",
+            "default": "4000"
+        },
+        "SubscriptionManagerUsername": {
+            "type": "String",
+            "description": "(Required) Username register to RHEL subscription manager",
+            "default": "username"
+        },
+        "SubscriptionManagerPassword": {
+            "type": "String",
+            "description": "(Required) Password register to RHEL subscription manager",
+            "default": "password"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": ["platformType", "Linux"]
+            },
+            "inputs": {
+                "timeoutSeconds": "{{ExecutionTimeout}}",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "cd /tmp",
+                    "mkdir -p forensic-symbol-builder",
+                    "cd forensic-symbol-builder",
+                    "sudo subscription-manager register --username {{SubscriptionManagerUsername}} --password {{SubscriptionManagerPassword}}  --auto-attach",
+                    "sudo subscription-manager config --rhsm.manage_repos=1",
+                    "sudo yum install -y -q python3.8 git go",
+                    "sudo subscription-manager repos --enable=rhel-8-for-$(uname -m)-baseos-debug-rpms --enable=rhel-8-for-$(uname -m)-appstream-debug-rpms",
+                    "sudo yum install -y -q kernel-debuginfo-$(uname -r) kernel-debuginfo-common-$(uname -m)-$(uname -r)",
+                    "git clone https://github.com/volatilityfoundation/dwarf2json.git",
+                    "echo 'clone done'",
+                    "cd dwarf2json",
+                    "sudo go build",
+                    "echo 'dwarf2json build done'",
+                    "./dwarf2json linux --elf /usr/lib/debug/lib/modules/`uname -r`/vmlinux > `uname -r`.json",
+                    "echo 'symbol build done'",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "sudo pip3 install awscli",
+                    "aws configure set default.s3.max_concurrent_requests 20",
+                    "aws s3 cp `uname -r`.json s3://{{s3bucket}}/volatility3/symbols/`uname -r`.json",
+                    "echo s3 copy complete",
+                    "ls -ltr",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}
