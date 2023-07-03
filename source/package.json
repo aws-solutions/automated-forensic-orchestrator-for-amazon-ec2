@@ -36,8 +36,8 @@
         "@types/node": "20.1.1",
         "@typescript-eslint/eslint-plugin": "5.30.5",
         "@typescript-eslint/parser": "5.30.5",
-        "aws-cdk": "^2.77.0",
-        "aws-cdk-lib": "2.46.0",
+        "aws-cdk": "^2.85.0",
+        "aws-cdk-lib": "2.85.0",
         "aws-sdk": "^2.1374.0",
         "cdk-nag": "^2.26.19",
         "constructs": "^10.0.0",
@@ -55,5 +55,9 @@
         "ts-node": "10.8.2",
         "typescript": "5.0.4",
         "uuid": "^9.0.0"
+    },
+    "overrides": {
+        "semver": "^7.5.3",
+        "optionator": "^0.9.3"
     }
 }

@@ -55,7 +55,7 @@ mypy-extensions==0.4.3
     # via
     #   black
     #   mypy
-packaging==21.3
+packaging==23.1
     # via
     #   mkdocs
     #   pytest
@@ -87,7 +87,7 @@ pyyaml==6.0
     #   pyyaml-env-tag
 pyyaml-env-tag==0.1
     # via mkdocs
-requests==2.27.1
+requests==2.31.0
     # via codecov
 six==1.16.0
     # via python-dateutil

@@ -14,12 +14,7 @@
   limitations under the License.
 */
 
-import {
-    Trail,
-    ReadWriteType,
-    CfnTrail,
-    DataResourceType,
-} from 'aws-cdk-lib/aws-cloudtrail';
+import { Trail, CfnTrail, DataResourceType } from 'aws-cdk-lib/aws-cloudtrail';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct, IConstruct } from 'constructs';
@@ -77,7 +72,6 @@ export class AWSCloudTrailDataEventTrail extends Construct {
             cloudWatchLogsRetention: logs.RetentionDays.ONE_YEAR,
             includeGlobalServiceEvents: false,
             isMultiRegionTrail: false,
-            managementEvents: ReadWriteType.NONE,
         });
     }
 }

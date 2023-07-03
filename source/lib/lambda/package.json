@@ -42,5 +42,9 @@
         "lint": "eslint  --ext .ts . --fix ",
         "test": "jest --silent --runInBand",
         "all": "npm run lint && npm run build && npm run test"
+    },
+    "overrides": {
+        "semver": "^7.5.3",
+        "optionator": "^0.9.3"
     }
 }

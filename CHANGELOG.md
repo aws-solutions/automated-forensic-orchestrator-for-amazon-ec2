@@ -1,5 +1,10 @@
 # Automated Forensics for Amazon EC2 Release Changelog
 
+## [1.2.1] - 2023-07-04
+
+### Fixed
+- Mitigated impact caused by new default settings for S3 Object Ownership (ACLs disabled) for all new S3 buckets.
+
 ## [1.2.0] - 2023-05-06
 
 ### Changed
