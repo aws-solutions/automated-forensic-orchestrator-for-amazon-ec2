@@ -39,7 +39,7 @@ import { AWSEventRuleConstruct } from './infra-utils/aws-event-rule-stack';
 import { ForensicSSMDBuilderConstruct } from './forensic-ssm-document-builder-stack';
 import { AWSSecureBucket } from './infra-utils/aws-secure-bucket';
 import { IVpc, Vpc } from 'aws-cdk-lib/aws-ec2';
-import { Bucket, IBucket } from 'aws-cdk-lib/aws-s3';
+import { Bucket, IBucket, ObjectOwnership } from 'aws-cdk-lib/aws-s3';
 
 import { ParameterTier, StringParameter } from 'aws-cdk-lib/aws-ssm';
 import {
@@ -193,7 +193,9 @@ export class ForensicsSolutionsConstructsStack extends Stack {
             }
         );
 
-        const accessLogsBucket = new Bucket(this, 'AccessLogsBucket');
+        const accessLogsBucket = new Bucket(this, 'AccessLogsBucket', {
+            objectOwnership: ObjectOwnership.OBJECT_WRITER,
+        });
 
         accessLogsBucketCfnNagSuppression(accessLogsBucket);
 

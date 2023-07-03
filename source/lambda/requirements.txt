@@ -51,7 +51,7 @@ python-dateutil==2.8.2
     #   botocore
 python2-secrets==1.0.5
     # via -r lambda/requirements.txt
-requests==2.27.1
+requests==2.31.0
     # via -r lambda/requirements.txt
 s3transfer==0.5.2
     # via
