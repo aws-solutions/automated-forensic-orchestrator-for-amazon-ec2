@@ -18,7 +18,7 @@ botocore==1.24.12
     #   aws-xray-sdk
     #   boto3
     #   s3transfer
-certifi==2023.5.7
+certifi==2023.7.22
     # via
     #   -r lambda/requirements.txt
     #   requests
