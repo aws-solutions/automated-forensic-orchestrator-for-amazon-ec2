@@ -14,7 +14,11 @@
   limitations under the License.
 */
 
-import { Trail, CfnTrail, DataResourceType } from 'aws-cdk-lib/aws-cloudtrail';
+import {
+    Trail,
+    CfnTrail,
+    DataResourceType,
+} from 'aws-cdk-lib/aws-cloudtrail';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct, IConstruct } from 'constructs';

@@ -1,5 +1,11 @@
 # Automated Forensics for Amazon EC2 Release Changelog
 
+## [1.2.2] - 2024-05
+
+### Changed
+- Removed the metric collector module
+- Updated dependencies
+
 ## [1.2.1] - 2023-07-04
 
 ### Fixed

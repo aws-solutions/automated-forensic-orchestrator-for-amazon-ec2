@@ -93,7 +93,7 @@
                     "echo copying...to {{s3ArtifactLocation}}/$kernel_release.lime",
 
                     "aws configure set default.s3.max_concurrent_requests 20",
-
+                 
                     "MEMSIZE=`awk '/MemTotal/ {print $2/1024/1024}' /proc/meminfo`",
                     "S3_EXPECTED_SIZE=`awk '/MemTotal/ {print $2*1024}' /proc/meminfo`",
                     "ACL_FLAG=\"--acl bucket-owner-full-control\"",
