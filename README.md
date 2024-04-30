@@ -290,10 +290,6 @@ This script is called from the solution build scripts to ensure that specified t
 
 ---
 
-## Collection of operational metrics
-
-This solution collects anonymous operational metrics to help AWS improve the quality and features of the solution. For more information, including how to disable this capability, please see the [implementation guide](deep link into the documentation with specific information about the metrics and how to opt-out).
-
 ## Build RHEL kernel symbol for memory analytics support of Red Hat Enterprise Linux 8
 1. after deploy the solution, go to the solution aws account
 2. goto aws console `Step Functions` find stepfunction `Forensic-Profile-Function`
