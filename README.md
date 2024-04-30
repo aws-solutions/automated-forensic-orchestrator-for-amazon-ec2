@@ -55,7 +55,6 @@ _Tools_
 5. Run the following commands in the same order as below:
     1. `npm ci`
     2. `npm run build-lambda`
-    3. `npm run build:collector`
 6. To build the Forensic Stack to be deployed in the Forensic AWS Account:
 
     `cdk synth -c account=<Forensic AWS Account Number> -c region=<Region> -c sechubaccount=<Security Hub Aggregator Account Number> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
@@ -140,7 +139,6 @@ Deploy the following cloud formation template in Application account to establis
 6.  Run the following commands in the same order as below:
     1. `npm ci`
     2. `npm run build-lambda`
-    3. `npm run build:collector`
 7.  To build the Forensic Stack to be deployed in the Forensic AWS Account:
 
     `cdk synth -c account=<<Forensic AWS Account>> -c region=<<Forensic solution Region>> -c secHubAccount=<<SecuHub Aggregator Account>> -c STACK_BUILD_TARGET_ACCT=forensicAccount` build the necessary CDK CFN templates for deploying forensic stack
@@ -182,7 +180,6 @@ _Note_: If you are reusing the above git clone, delete the `cdk.out` folder.
 5.  Run the following commands in the same order as below:
     1. `npm ci`
     2. `npm run build-lambda`
-    3. `npm run build:collector`
 6.  To build the Forensic Stack to be deployed in SecurityHub Aggregator account:
 
     `cdk synth -c sechubaccount=<<SecHub Account>> -c forensicAccount=<<Forensic Account>> -c forensicRegion=<<Forensic solution Region>> -c sechubregion=<<Security Hub Region>> -c STACK_BUILD_TARGET_ACCT=securityHubAccount`
@@ -292,10 +289,6 @@ _Note_: It is the developer's responsibility to ensure that all test commands ar
 This script is called from the solution build scripts to ensure that specified tests are passing while performing build, validation and publishing tasks via the pipeline.
 
 ---
-
-## Collection of operational metrics
-
-This solution collects anonymous operational metrics to help AWS improve the quality and features of the solution. For more information, including how to disable this capability, please see the [implementation guide](deep link into the documentation with specific information about the metrics and how to opt-out).
 
 ## Build RHEL kernel symbol for memory analytics support of Red Hat Enterprise Linux 8
 1. after deploy the solution, go to the solution aws account

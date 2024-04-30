@@ -31,7 +31,7 @@ show:             ## Show the current environment.
 .PHONY: check-py-version
 check-py-version:
 	@echo "python version require to be at least 3.9.0. Leverage pyenv to set up python environment"
-	$(ENV_PREFIX)python -c "import sys; print(sys.version_info); exit(0) if sys.version_info.major == 3 and sys.version_info.minor >= 9  else exit(-1)"
+	$(ENV_PREFIX)python -c "import sys; print(sys.version_info); exit(0) if sys.version_info.major == 3 and sys.version_info.minor >= 9 and sys.version_info.minor <= 10 else exit(-1)"
 	
 	
 .PHONY: install

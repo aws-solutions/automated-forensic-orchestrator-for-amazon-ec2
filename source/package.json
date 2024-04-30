@@ -1,6 +1,6 @@
 {
     "name": "forensic-cdk-solution",
-    "version": "1.0.0",
+    "version": "1.2.2",
     "bin": {
         "cdk-solution": "bin/forensic-cdk-solution.js"
     },
@@ -8,8 +8,7 @@
         "lint": "eslint --fix --ext .ts . && prettier --write './**/*.{ts,js,json}' ",
         "cleanup": "tsc --build ./ --clean && rm -rf node_modules && rm -f package-lock.json",
         "cleanup:tsc": "tsc --build ./ --clean",
-        "build": "npm run build:collector && npm run build-lambda",
-        "build:collector": "cd lib/lambda; npm ci; npm run build; cd -",
+        "build": "npm run build-lambda",
         "watch": "tsc -w",
         "test": "jest test -- -u",
         "cdk": "cdk",
@@ -36,7 +35,7 @@
         "@types/node": "20.1.1",
         "@typescript-eslint/eslint-plugin": "5.30.5",
         "@typescript-eslint/parser": "5.30.5",
-        "aws-cdk": "^2.85.0",
+        "aws-cdk": "^2.138.0",
         "aws-cdk-lib": "2.85.0",
         "aws-sdk": "^2.1374.0",
         "cdk-nag": "^2.26.19",

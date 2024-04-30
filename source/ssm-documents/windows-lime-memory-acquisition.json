@@ -24,7 +24,7 @@
             "default": "ap-southeast-2"
         }
     },
-
+    
     "mainSteps": [
         {
             "action": "aws:runPowerShellScript",
@@ -47,7 +47,7 @@
                     "echo $(Get-Item -Path Env:\\AWS_SECRET_ACCESS_KEY)",
                     "echo 'eching id passed in'",
                     "echo {{ AWS_ACCESS_KEY_ID }}",
-
+                    
                     "Start-Process -FilePath \"msiexec.exe\" -ArgumentList \"/i https://awscli.amazonaws.com/AWSCLIV2.msi /qn\" -Wait",
                     "$env:Path=[System.Environment]::GetEnvironmentVariable(\"Path\",\"Machine\")",
                     "echo 'aws cli installed'",

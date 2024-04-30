@@ -2,7 +2,6 @@
     "app": "npx ts-node bin/forensic-cdk-solution.ts",
     "context": {
         "@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy": true,
-        "sendAnonymousMetric": "Yes",
         "deployApi": false,
         "apiAllowedIps": [],
         "apiNotifications": false,

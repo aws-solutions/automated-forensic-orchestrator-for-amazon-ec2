@@ -73,7 +73,7 @@
                     "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
                     "export AWS_SESSION_TOKEN={{SessionToken}}",
                     "export AWS_DEFAULT_REGION={{Region}}",
-
+                    
                     "cd /tmp",
                     "mkdir forensic-analysis",
                     "cd forensic-analysis",
@@ -92,7 +92,7 @@
 
                     "pip3 install pyOpenSSL --upgrade",
                     "aws s3 cp s3://{{s3ProfileBucket}}/volatility3/symbols/ volatility3/symbols/linux/ --recursive",
-
+                    
                     "aws s3 cp s3://{{s3ProfileBucket}}/{{s3MemoryCaptureKey}}/output.lime /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime",
                     "python3 vol.py -f /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime linux.bash.Bash > /tmp/forensic-analysis/data/{{forensicID}}_working_dir/vol3-output-linux_bash.txt",
                     "python3 vol.py -f /tmp/forensic-analysis/data/{{forensicID}}_evidence_dir/output.lime linux.psaux.PsAux > /tmp/forensic-analysis/data/{{forensicID}}_working_dir/vol3-output-linux_psaux.txt",

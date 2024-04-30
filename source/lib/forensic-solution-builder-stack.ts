@@ -78,8 +78,6 @@ import {
     AWSCloudTrailDataEventTrail,
     CloudTrailDataEventSelector,
 } from './infra-utils/aws-cloudtrial-trail';
-import { SolutionMetricsCollectorConstruct } from './infra-utils/solution-metrics-collector';
-import { SOLUTION_ID, SOLUTION_VERSION } from './infra-utils/aws-solution-environment';
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import { accessLogsBucketCfnNagSuppression } from './infra-utils/cfn-nag-suppression';
 import { ForensicsSecurityHubConfigConstruct } from './security-hub/security-hub-construct';
@@ -722,29 +720,6 @@ export class ForensicsSolutionsConstructsStack extends Stack {
         });
         vpcIDOutPut.node.addDependency(this.vpc);
 
-        const sendAnonymousMetric = this.getConfigForMetrics();
-
-        new SolutionMetricsCollectorConstruct(this, 'metrics-collector-construct', {
-            version: SOLUTION_VERSION,
-            solutionId: SOLUTION_ID,
-            solutionDisplayName: 'AWS Compute Forensic Solution',
-            sendAnonymousMetric: sendAnonymousMetric,
-            metricsData: {
-                enabledAPI: props?.deployForensicApi,
-                importedVpc: this.importedVPC,
-            },
-        });
-    }
-
-    private getConfigForMetrics() {
-        const sendAnonymousMetric =
-            this.node.tryGetContext('sendAnonymousMetric') ?? 'Yes';
-        if (sendAnonymousMetric && !['Yes', 'No'].includes(sendAnonymousMetric)) {
-            Annotations.of(this).addError(
-                'Configuration sendAnonymousMetric can only contain value Yes or No'
-            );
-        }
-        return sendAnonymousMetric;
     }
 
     private createAPI(
