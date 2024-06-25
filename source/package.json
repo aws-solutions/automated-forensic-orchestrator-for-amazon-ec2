@@ -1,6 +1,6 @@
 {
     "name": "forensic-cdk-solution",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "bin": {
         "cdk-solution": "bin/forensic-cdk-solution.js"
     },
