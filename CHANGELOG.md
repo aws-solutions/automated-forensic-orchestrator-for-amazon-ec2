@@ -1,5 +1,10 @@
 # Automated Forensics for Amazon EC2 Release Changelog
 
+## [1.2.3] - 2024-06
+
+### Changed
+- Updated dependencies to address CVE-2020-22083, CVE-2020-22083, CVE-2022-42969, CVE-2024-34064, CVE-2024-35195, CVE-2024-37891, CVE-2024-4068  
+
 ## [1.2.2] - 2024-05
 
 ### Changed
