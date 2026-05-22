@@ -8,7 +8,7 @@ astroid==3.2.2
     # via pylint
 black==24.4.2
     # via -r requirements-test.in
-certifi>=2024.07.04
+certifi==2026.5.20
     # via requests
 charset-normalizer==3.3.2
     # via requests
@@ -20,15 +20,15 @@ dill==0.3.8
     # via pylint
 exceptiongroup==1.2.1
     # via pytest
-flake8==7.1.1
+flake8==4.0.1
     # via -r requirements-test.in
-idna==3.7
+idna==3.15
     # via requests
 iniconfig==2.0.0
     # via pytest
 isort==5.10.1
     # via pylint
-mccabe==0.7.0
+mccabe==0.6.1
     # via
     #   flake8
     #   pylint
@@ -51,9 +51,9 @@ platformdirs==2.5.1
     #   pylint
 pluggy==1.5.0
     # via pytest
-pycodestyle==2.12.1
+pycodestyle==2.8.0
     # via flake8
-pyflakes==3.2.0
+pyflakes==2.4.0
     # via flake8
 pylint==3.2.3
     # via -r requirements-test.in
