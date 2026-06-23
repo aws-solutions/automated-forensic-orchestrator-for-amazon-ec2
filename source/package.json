@@ -34,7 +34,7 @@
         "constructs": "^10.0.0"
     },
     "dependencies": {
-        "@babel/core": "7.29.0",
+        "@babel/core": "7.29.6",
         "@aws-cdk/assert": "2.46.0",
         "@types/node": "20.14.0",
         "@typescript-eslint/eslint-plugin": "5.30.5",
