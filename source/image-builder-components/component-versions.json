@@ -1,0 +1,7 @@
+{
+    "_comment": "EC2 Image Builder component and recipe versions are immutable. CreateComponent fails if a version already exists with different Data, so the version in cdk.json imageBuilderPipelines must be bumped whenever a component file changes. This records the content each published version corresponds to; test/image-builder-component-version.test.ts enforces it.",
+    "version": "1.3.0",
+    "components": {
+        "forensic-analysis-tools.yml": "cd6e4114164ae6401a171818ced873b14036edb37cb32eefdc7f24142a453e59"
+    }
+}

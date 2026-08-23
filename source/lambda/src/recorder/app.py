@@ -20,6 +20,7 @@ import os
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import create_response
 from ..common.log import get_logger
+from ..common.redact import redact
 
 logger = get_logger(__name__)
 
@@ -29,7 +30,7 @@ def lambda_handler(event, context):
     response to image builder completion event
     """
     logger.info("image builder completed")
-    logger.info(event)
+    logger.info("event %s", redact(event))
     logger.info(context)
     logger.info(event.get("Records")[0].get("Sns").get("Message"))
 

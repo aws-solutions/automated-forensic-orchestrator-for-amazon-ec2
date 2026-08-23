@@ -107,3 +107,17 @@ env.bak/
 venv.bak/
 .build/
 .idea/
+
+# Agent and scanner working directories. .claude/ holds git worktrees - 5.7 GB of
+# full repository copies at the time this was added - and .holmes/ holds scan
+# artefacts. Neither belongs in the repository, and both are easy to add by
+# accident with `git add -A`.
+.claude/
+.holmes/
+
+# Generated coverage output. These were tracked, so a public clone carried build
+# artefacts, and a stale coverage XML in the repo invites the reader to trust a
+# number nothing produced.
+coverage-reports/
+source/lambda/tests/coverage-reports/
+source/test/coverage-reports/

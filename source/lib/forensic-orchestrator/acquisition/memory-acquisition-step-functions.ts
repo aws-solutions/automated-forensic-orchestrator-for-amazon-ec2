@@ -84,7 +84,7 @@ export class MemoryAcquisitionConstruct extends Construct {
                 lambdaFunction: props.checkMemoryAcquisitionCompletionLambda,
             }
         );
-        checkMemoryAcquisitionCompletion.addCatch(memoryAcquisitionFailedChain);
+        // The catcher is attached further down, once containBeforeFailing exists.
 
         const isMemoryAcquisitionComplete = new Choice(
             this,
@@ -118,6 +118,66 @@ export class MemoryAcquisitionConstruct extends Construct {
             }
         );
         triggerForensicsIsolation.addCatch(memoryAcquisitionFailedChain);
+
+        /*
+         * Containment when the acquisition status check itself fails.
+         *
+         * checkMemoryAcquisitionCompletion already catches to
+         * memoryAcquisitionFailedChain, so the failure is reported and the
+         * execution ends - but isolation sits further down the happy path and is
+         * skipped entirely. That is the wrong way round for the case that
+         * actually happens: the status check fails because the target stopped
+         * answering SSM, which is exactly when containment matters most. And
+         * isolation does not need SSM - it swaps the security group, revokes
+         * sessions and sets termination protection through the EC2 and IAM APIs,
+         * all of which still work against a host that has gone dark.
+         *
+         * A second Lambda invoke is needed because triggerForensicsIsolation
+         * already has a next state (the investigation). This one is terminal: the
+         * acquisition failed either way, so it always ends in the failure chain,
+         * and isolation failing does not mask the original failure.
+         *
+         * Strictly additive by design. The catcher keeps the state input and puts
+         * the error under $.error, so the same isIsolationNeeded flag the happy
+         * path uses can be read here; when it is absent or false - which is every
+         * triage that did not ask for containment - this behaves exactly as
+         * before and goes straight to the failure chain. It can add an isolation
+         * that used to be skipped; it cannot take one away or isolate an instance
+         * nobody asked to isolate.
+         */
+        const isolateAfterAcquisitionFailure = new LambdaInvoke(
+            this,
+            'Isolate After Acquisition Failure',
+            {
+                lambdaFunction: props.forensicsIsolationLambda,
+            }
+        );
+        isolateAfterAcquisitionFailure.addCatch(memoryAcquisitionFailedChain);
+        isolateAfterAcquisitionFailure.next(memoryAcquisitionFailedChain);
+
+        const containBeforeFailing = new Choice(
+            this,
+            'Contain Before Failing'
+        )
+            .when(
+                Condition.and(
+                    Condition.isPresent('$.Payload.body.isIsolationNeeded'),
+                    Condition.booleanEquals(
+                        '$.Payload.body.isIsolationNeeded',
+                        true
+                    )
+                ),
+                isolateAfterAcquisitionFailure
+            )
+            .otherwise(memoryAcquisitionFailedChain);
+
+        // resultPath keeps the state input and files the error under $.error, so
+        // containBeforeFailing can still read isIsolationNeeded. Without it the
+        // error object replaces the input entirely and the flag is gone, which
+        // would send every caught failure down the otherwise branch.
+        checkMemoryAcquisitionCompletion.addCatch(containBeforeFailing, {
+            resultPath: '$.error',
+        });
 
         const chain = Chain.start(
             runMemoryAcquisitionStep.next(

@@ -681,9 +681,15 @@ def test_trigger_event():
         )
         assert first_attached_volume_info.get("attachedVolumeId") == "v1"
         assert first_attached_volume_info.get("attachedDevice") == "/dev/sdg"
+        # The volume is attached at /dev/sdg, so the partition to mount is
+        # /dev/sdg1. This used to expect /data/dev/xvdg1: EC2 only creates
+        # /dev/xvd* names on the Xen instance families, and every analysis
+        # instance type is Nitro, where udev provides /dev/sdg but never
+        # /dev/xvdg - so the mount named a device that could not exist. See
+        # test_disk_mount_device_resolution.py.
         assert (
             first_attached_volume_info.get("instanceVolumeMountingPoint")
-            == "/data/dev/xvdg1"
+            == "/data/dev/sdg1"
         )
 
 

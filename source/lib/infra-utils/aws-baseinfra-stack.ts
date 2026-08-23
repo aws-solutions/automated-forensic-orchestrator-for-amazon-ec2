@@ -338,12 +338,20 @@ export class InfraConfig extends Construct {
             }),
             new PolicyStatement({
                 effect: Effect.ALLOW,
+                // Written out rather than as kms:Encrypt*, kms:Decrypt*, kms:ReEncrypt*,
+                // kms:GenerateDataKey* and kms:Describe*. The expansion of those prefixes
+                // over the actions KMS actually defines is this list plus the asymmetric
+                // data key pair operations, which a log group's symmetric CMK cannot be
+                // used for, so nothing the delivery path needs is lost and cdk-nag no
+                // longer has a wildcard action to report.
                 actions: [
-                    'kms:Encrypt*',
-                    'kms:Decrypt*',
-                    'kms:ReEncrypt*',
-                    'kms:GenerateDataKey*',
-                    'kms:Describe*',
+                    'kms:Encrypt',
+                    'kms:Decrypt',
+                    'kms:ReEncryptFrom',
+                    'kms:ReEncryptTo',
+                    'kms:GenerateDataKey',
+                    'kms:GenerateDataKeyWithoutPlaintext',
+                    'kms:DescribeKey',
                 ],
                 resources: [encryptionKey.keyArn],
             })

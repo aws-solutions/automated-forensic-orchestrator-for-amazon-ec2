@@ -21,9 +21,16 @@ import uuid
 from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import create_aws_client
-from ..common.common import clean_date_format, create_response
+from ..common.common import (
+    clean_date_format,
+    create_response,
+    ssm_output_log_group,
+)
 from ..common.exception import MemoryAcquisitionError
 from ..common.log import get_logger
+from ..common.redact import redact
+from ..common.managed_nodes import online_node_ids
+from ..common.platform_dispatch import platform_of, resolve_document
 from ..common.node_processing import (
     normalize_instance_ids,
     normalize_instance_info,
@@ -35,6 +42,11 @@ from ..data.service import ForensicDataService
 logger = get_logger(__name__)
 
 instance_id = ""
+
+
+# DescribeInstanceInformation returns 10 managed nodes per page by default and
+# 50 at most, and the InstanceIds filter itself accepts at most 50 values.
+SSM_DESCRIBE_MAX_FILTER_VALUES = 50
 
 
 @xray_recorder.capture("Perform Memory Acquisition")
@@ -100,7 +112,11 @@ def handler(event, context):
         if not instance_ids:
             raise MemoryAcquisitionError("No valid instance IDs provided")
 
-        memory_acquisition_document_name = os.environ[
+        # Read for the parameter guards below, which compare the *resolved*
+        # document against these two. There is deliberately no pre-loop default
+        # any more: a default is what let the previous instance's document be
+        # reused for the next one.
+        linux_memory_acquisition_document_name = os.environ[
             "LINUX_LIME_MEMORY_ACQUISITION"
         ]
         windows_memory_acquisition_document_name = os.environ[
@@ -129,12 +145,8 @@ def handler(event, context):
             f"Instance Info for all the affected instance is {instances_info}"
         )
 
-        response = ssm_client.describe_instance_information(
-            Filters=[{"Key": "InstanceIds", "Values": instance_ids}]
-        )
         ssm_enabled_instances = {}
-        for item in response["InstanceInformationList"]:
-            instance_id = item["InstanceId"]
+        for instance_id in sorted(online_node_ids(ssm_client, instance_ids)):
             ssm_enabled_instances[instance_id] = True
             output_body["InstanceResults"][instance_id] = {
                 "SSM_STATUS": "SUCCEEDED"
@@ -166,25 +178,23 @@ def handler(event, context):
                         f"SSM not installed on instance {instance_id}"
                     )
                     continue
-                # Get instance info from normalized dictionary
-                instance_info = instances_info.get(instance_id, {})
-                platform_name = instance_info.get("PlatformName")
-                platform_detail = instance_info.get("PlatformDetails")
-                platform_version = instance_info.get("PlatformVersion")
-                if platform_detail == "Windows":
-                    memory_acquisition_document_name = (
-                        windows_memory_acquisition_document_name
-                    )
-                elif platform_name == "Red Hat Enterprise Linux":
-                    if 10 > float(platform_version) > 9:
-                        rhel_version = "9"
-                    if 9 > float(platform_version) > 8:
-                        rhel_version = "8"
-                    if 8 > float(platform_version) > 7:
-                        rhel_version = "7"
-                    memory_acquisition_document_name = os.environ[
-                        "RHEL" + rhel_version + "_LIME_MEMORY_ACQUISITION"
-                    ]
+                # Resolved per instance from that instance's own platform.
+                #
+                # Two defects lived here. The document was chosen once before
+                # the loop and only ever reassigned, so in a finding naming both
+                # a Windows and a Linux instance the Windows document leaked onto
+                # every Linux instance after it - winpmem sent to a host with no
+                # winpmem, which loses that instance's memory. And the Red Hat
+                # major version came from three ranges open at the lower bound,
+                # so RHEL 8.0 matched none of them and inherited the previous
+                # instance's version. Both now live in one place, shared with
+                # completion, memory analysis and disk investigation.
+                platform = platform_of(
+                    input_body.get("instanceInfo"), instance_id
+                )
+                memory_acquisition_document_name = resolve_document(
+                    platform, "MEMORY_ACQUISITION"
+                )
                 logger.info(
                     f"Invoking ssm document {memory_acquisition_document_name} for instance {instance_id}"
                 )
@@ -215,13 +225,30 @@ def handler(event, context):
                             ],
                         },
                         {
+                            # These credentials are handed to the instance under
+                            # investigation, which is by definition attacker
+                            # controlled. s3:Get* on the whole bucket let it read
+                            # every other case's evidence.
+                            #
+                            # Two prefixes, and only two: tools/ holds the
+                            # pre-built LiME modules the document downloads, and
+                            # the case's own prefix is head-object'ed at the end
+                            # to confirm the capture actually landed and is not
+                            # zero bytes. Scoping this to tools/ alone made that
+                            # check fail with HeadObject 403 and the acquisition
+                            # abort after a successful capture.
+                            #
+                            # The last element used to be two ARNs with the comma
+                            # missing between them, so Python concatenated them
+                            # into the single nonsense resource
+                            # "arn:aws:s3:::<bucket>/arn:aws:s3:::<bucket>".
+                            # ruff flags it as ISC004.
                             "Sid": "S3LeastGetPrivilege",
                             "Effect": "Allow",
-                            "Action": ["s3:Get*"],
+                            "Action": ["s3:GetObject", "s3:GetObjectVersion"],
                             "Resource": [
-                                f"arn:aws:s3:::{s3bucket_name}/*",
-                                f"arn:aws:s3:::{s3bucket_name}/"
-                                f"arn:aws:s3:::{s3bucket_name}",
+                                f"arn:aws:s3:::{s3bucket_name}/tools/*",
+                                f"arn:aws:s3:::{s3bucket_name}/{s3_prefix}/*",
                             ],
                         },
                         {
@@ -266,8 +293,54 @@ def handler(event, context):
                         )
                     ],
                 }
+                # The Linux and RHEL documents download a LiME module pre-built
+                # for the target's kernel release from
+                # s3://<bucket>/tools/LiME/lime-<release>.ko. Without this
+                # parameter s3bucket keeps its placeholder default, the download
+                # is attempted against a bucket literally named "S3 bucket
+                # Location" and always fails, so every acquisition falls through
+                # to compiling LiME on the instance under investigation - which
+                # aborts outright whenever kernel-devel for the running kernel is
+                # not in the enabled repositories.
+                #
+                # windows-lime-memory-acquisition.json does not declare s3bucket
+                # and SSM rejects any parameter a document does not declare, so
+                # this is keyed on the document actually selected above.
+                if (
+                    memory_acquisition_document_name
+                    != windows_memory_acquisition_document_name
+                ):
+                    params["s3bucket"] = [s3bucket_name]
+                    # ExecutionTimeout is declared by these documents and drives
+                    # the step's timeoutSeconds, but was never sent, so every
+                    # acquisition ran with the document default of 1800s no
+                    # matter what ssmExecutionTimeout was set to. The capture is
+                    # streamed through a single-threaded gzip, so a large target
+                    # needs this raised.
+                    params["ExecutionTimeout"] = [
+                        os.environ.get("SSM_EXECUTION_TIMEOUT", "1800")
+                    ]
+
+                # Only the generic Linux document implements the two tool
+                # fallback, so only it declares this parameter. RHEL acquires
+                # with AVML already and Windows with winpmem, and SSM rejects
+                # the whole send_command with InvalidParameters when a parameter
+                # is not declared - so sending this to either of them would stop
+                # the acquisition rather than configure it.
+                if (
+                    memory_acquisition_document_name
+                    == linux_memory_acquisition_document_name
+                ):
+                    params["memoryAcquisitionTools"] = [
+                        os.environ.get(
+                            "MEMORY_ACQUISITION_TOOLS", "lime,avml"
+                        )
+                    ]
+
                 logger.info(
-                    f"Performing memory acquisition for {platform_name} instance {instance_id}"
+                    "Performing memory acquisition for "
+                    f"{platform.get('PlatformName')} instance {instance_id} "
+                    f"with {memory_acquisition_document_name}"
                 )
                 response = ssm_client.send_command(
                     InstanceIds=[instance_id],
@@ -275,7 +348,9 @@ def handler(event, context):
                     Comment="Memory Acquisition for " + instance_id,
                     Parameters=params,
                     CloudWatchOutputConfig={
-                        "CloudWatchLogGroupName": forensic_id,
+                        "CloudWatchLogGroupName": ssm_output_log_group(
+                            forensic_id
+                        ),
                         "CloudWatchOutputEnabled": True,
                     },
                 )
@@ -326,7 +401,7 @@ def handler(event, context):
                     "SSM_STATUS": "FAILED",
                     "error": str(e),
                 }
-        logger.info(output_body)
+        logger.info("output %s", redact(output_body))
         return create_response(200, output_body)
     except Exception as e:
         exception_type = e.__class__.__name__

@@ -17,9 +17,10 @@
 import os
 import time
 from unittest import mock
-from unittest.mock import MagicMock, Mock, patch, call
-import pytest
+from unittest.mock import MagicMock, Mock, call, patch
+
 import botocore
+import pytest
 from kubernetes import client
 
 from ..src.triage import app
@@ -428,17 +429,25 @@ class TestInstanceInfoRetrieval:
             app.retrieve_instance_info(logger, ec2_client, "i-123")
 
     def test_get_instance_platform_success(self):
-        """Test successful platform info retrieval"""
+        """Test successful platform info retrieval.
+
+        The lookup paginates and matches the record by instance id, so the
+        fixture has to carry InstanceId - which is the point: a record for some
+        other instance must not be used to pick this instance's documents.
+        """
         ssm_client = MagicMock()
-        ssm_client.describe_instance_information.return_value = {
-            "InstanceInformationList": [
-                {
-                    "PlatformType": "Linux",
-                    "PlatformName": "Amazon Linux",
-                    "PlatformVersion": "2",
-                }
-            ]
-        }
+        ssm_client.get_paginator.return_value.paginate.return_value = [
+            {
+                "InstanceInformationList": [
+                    {
+                        "InstanceId": "i-123",
+                        "PlatformType": "Linux",
+                        "PlatformName": "Amazon Linux",
+                        "PlatformVersion": "2",
+                    }
+                ]
+            }
+        ]
 
         instance_info = {"InstanceId": "i-123"}
         result = app.get_instance_platform(ssm_client, "i-123", instance_info)
@@ -447,15 +456,33 @@ class TestInstanceInfoRetrieval:
         assert result["PlatformName"] == "Amazon Linux"
         assert result["PlatformVersion"] == "2"
 
+    def test_get_instance_platform_ignores_another_instances_record(self):
+        """A page can hold records this call did not ask about."""
+        ssm_client = MagicMock()
+        ssm_client.get_paginator.return_value.paginate.return_value = [
+            {
+                "InstanceInformationList": [
+                    {
+                        "InstanceId": "i-999",
+                        "PlatformType": "Windows",
+                        "PlatformName": "Microsoft Windows Server",
+                        "PlatformVersion": "10.0.17763",
+                    }
+                ]
+            }
+        ]
+        with pytest.raises(Exception, match="not registered with Systems Manager"):
+            app.get_instance_platform(ssm_client, "i-123", {})
+
     def test_get_instance_platform_no_info(self):
         """Test no platform info raises exception"""
         ssm_client = MagicMock()
-        ssm_client.describe_instance_information.return_value = {
-            "InstanceInformationList": []
-        }
+        ssm_client.get_paginator.return_value.paginate.return_value = [
+            {"InstanceInformationList": []}
+        ]
 
         with pytest.raises(
-            Exception, match="not able to accuire instance detail info"
+            Exception, match="not registered with Systems Manager"
         ):
             app.get_instance_platform(ssm_client, "i-123", {})
 
@@ -858,8 +885,7 @@ class TestAffectedResourceInCluster:
             }
         }
 
-        # Mock the get_affected_pods call that would be made for deployment
-        mock_get_pods.return_value = ["pod1", "pod2"]
+        mock_get_pods.return_value = ["should not be called for pods"]
 
         resource_type, namespace, pods = app.get_affected_resource_in_cluster(
             event,
@@ -868,10 +894,15 @@ class TestAffectedResourceInCluster:
             "arn:aws:iam::123456789012:role/test-role",
         )
 
-        # Note: The function treats "pods" as "deployments" due to the logic
-        assert resource_type == "Deployment"
+        # A pods finding is a pods finding. This asserted "Deployment" because
+        # `if x == "deployments" or "deployment":` is always true, so the Pods
+        # branch was unreachable and the pod names were looked up as a deployment
+        # name - which matches nothing. The names come straight off the finding,
+        # space separated, so get_affected_pods is not consulted at all.
+        assert resource_type == "Pods"
         assert namespace == "default"
         assert pods == ["pod1", "pod2"]
+        mock_get_pods.assert_not_called()
 
     @patch.object(app, "get_affected_pods")
     def test_get_affected_resource_none(self, mock_get_pods):
@@ -907,9 +938,10 @@ class TestAffectedResourceInCluster:
             "arn:aws:iam::123456789012:role/test-role",
         )
 
-        # Due to the logic bug in the code, "unsupported" still triggers deployment path
-        # The actual code has: if affected_resource_type == "deployments" or "deployment":
-        # This always evaluates to True because "deployment" is truthy
-        assert resource_type == "Deployment"
-        assert namespace == "default"
+        # An unrecognised workload type triggers no rollout. This asserted
+        # "Deployment" because the always-true condition made the else branch
+        # below unreachable, so an unsupported type was silently treated as a
+        # deployment named after it.
+        assert resource_type == "none"
+        assert namespace == "none"
         assert pods == []

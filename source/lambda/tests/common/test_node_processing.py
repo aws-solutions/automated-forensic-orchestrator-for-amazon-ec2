@@ -6,7 +6,7 @@
 #  use this file except in compliance with the License. A copy of the License #
 #  is located at                                                              #
 #                                                                             #
-#      http://www.apache.org/licenses/LICENSE-2.0/                            #
+#      http://www.apache.org/licenses/LICENSE-2.0/                                        #
 #                                                                             #
 #  or in the "license" file accompanying this file. This file is distributed  #
 #  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express #
@@ -14,144 +14,95 @@
 #  sions and limitations under the License.                                   #
 ###############################################################################
 
-import pytest
-from unittest.mock import patch, MagicMock
+"""Instance id and instance info normalisation.
+
+Every acquisition and investigation Lambda funnels its input through these two
+functions, so a shape they mishandle silently loses an instance from a finding
+rather than failing. Both accept several shapes because triage produces one
+shape for a single EC2 instance and another for the nodes of an EKS cluster.
+"""
+
+from ...src.common.node_processing import (
+    normalize_instance_ids,
+    normalize_instance_info,
+)
+
+INSTANCE_A = "i-0aaaaaaaaaaaaaaaa"
+INSTANCE_B = "i-0bbbbbbbbbbbbbbbb"
 
 
-# Mock the functions we need
-def normalize_instance_ids(instance_ids):
-    """Mock normalize_instance_ids function for testing"""
-    if instance_ids is None:
-        return []
+class TestNormalizeInstanceIds:
+    def test_a_single_id_becomes_a_one_item_list(self):
+        assert normalize_instance_ids(INSTANCE_A) == [INSTANCE_A]
 
-    if isinstance(instance_ids, list):
-        if not instance_ids:
-            return []
-        return instance_ids
-
-    try:
-        return [str(instance_ids)]
-    except Exception as e:
-        # Mock logger for testing
-        print(f"Error converting instance ID to string: {str(e)}")
-        return []
-
-
-def normalize_instance_info(instance_info):
-    """Mock normalize_instance_info function for testing"""
-    if not instance_info:
-        return {}
-
-    # If it's already in the format we want (dict with instance IDs as keys)
-    if isinstance(instance_info, dict) and all(
-        isinstance(v, dict) and "InstanceId" in v
-        for v in instance_info.values()
-    ):
-        return instance_info
-
-    result = {}
-
-    # Handle single dict case
-    if isinstance(instance_info, dict):
-        if "InstanceId" in instance_info:
-            instance_id = instance_info["InstanceId"]
-            result[instance_id] = instance_info
-        return result
-
-    # Handle list of dicts case
-    if isinstance(instance_info, list):
-        for item in instance_info:
-            if isinstance(item, dict) and "InstanceId" in item:
-                instance_id = item["InstanceId"]
-                result[instance_id] = item
-
-    return result
-
-
-class TestNodeProcessing:
-    """Test node_processing.py functions"""
-
-    def test_normalize_instance_ids_valid(self):
-        """Test normalize_instance_ids with valid inputs"""
-        # Test with string input
-        assert normalize_instance_ids("i-1234567890") == ["i-1234567890"]
-
-        # Test with list input
-        assert normalize_instance_ids(["i-1234567890", "i-0987654321"]) == [
-            "i-1234567890",
-            "i-0987654321",
+    def test_a_list_is_returned_as_is(self):
+        assert normalize_instance_ids([INSTANCE_A, INSTANCE_B]) == [
+            INSTANCE_A,
+            INSTANCE_B,
         ]
 
-        # Test with number input
-        assert normalize_instance_ids(12345) == ["12345"]
+    def test_falsy_input_is_an_empty_list_not_a_crash(self):
+        # A finding with no resolvable instance must not make the caller iterate
+        # over None.
+        for empty in (None, "", [], {}):
+            assert normalize_instance_ids(empty) == []
 
-    def test_normalize_instance_ids_invalid(self):
-        """Test normalize_instance_ids with invalid inputs"""
-        # Test with None input
-        assert normalize_instance_ids(None) == []
+    def test_an_unexpected_type_is_coerced_rather_than_dropped(self):
+        # Losing an instance silently is worse than carrying an odd looking id
+        # that the next API call will reject visibly.
+        assert normalize_instance_ids(1234) == ["1234"]
 
-        # Test with empty list input
-        assert normalize_instance_ids([]) == []
+    # Note: the module's own except branch is unreachable. It logs with an
+    # f-string that interpolates the same value whose str() just failed, so the
+    # handler raises again. Not tested and not "fixed": instance ids reach these
+    # functions from DynamoDB and from JSON events, both of which can only
+    # produce strings and lists.
 
-        # Test with empty string input
-        assert normalize_instance_ids("") == [""]
 
-        # Test with input that causes exception
-        mock_obj = MagicMock()
-        mock_obj.__str__.side_effect = Exception("Cannot convert to string")
+class TestNormalizeInstanceInfo:
+    def test_a_single_instance_dictionary_is_keyed_by_its_id(self):
+        info = {"InstanceId": INSTANCE_A, "PlatformName": "Amazon Linux"}
 
-        # Just test the function directly without patching
-        result = normalize_instance_ids(mock_obj)
-        assert result == []
+        assert normalize_instance_info(info) == {INSTANCE_A: info}
 
-    def test_normalize_instance_info(self):
-        """Test normalize_instance_info function"""
-        # Test with single dictionary input
-        input_dict = {"InstanceId": "i-1234", "PlatformName": "Linux"}
-        expected_single = {
-            "i-1234": {"InstanceId": "i-1234", "PlatformName": "Linux"}
+    def test_a_list_of_dictionaries_is_keyed_by_id(self):
+        a = {"InstanceId": INSTANCE_A, "PlatformName": "Amazon Linux"}
+        b = {"InstanceId": INSTANCE_B, "PlatformDetails": "Windows"}
+
+        assert normalize_instance_info([a, b]) == {
+            INSTANCE_A: a,
+            INSTANCE_B: b,
         }
-        assert normalize_instance_info(input_dict) == expected_single
 
-        # Test with list of dictionaries input
-        input_list = [
-            {"InstanceId": "i-1234", "PlatformName": "Linux"},
-            {"InstanceId": "i-5678", "PlatformName": "Windows"},
-        ]
-        expected_list = {
-            "i-1234": {"InstanceId": "i-1234", "PlatformName": "Linux"},
-            "i-5678": {"InstanceId": "i-5678", "PlatformName": "Windows"},
+    def test_a_mapping_already_keyed_by_instance_id_is_preserved(self):
+        # performMemoryAcquisition looks up instances_info.get(instance_id), so a
+        # mapping that came back keyed already must survive unchanged.
+        keyed = {
+            INSTANCE_A: {"PlatformName": "Amazon Linux"},
+            INSTANCE_B: {"PlatformName": "Ubuntu"},
         }
-        assert normalize_instance_info(input_list) == expected_list
 
-        # Test with None input
-        assert normalize_instance_info(None) == {}
+        normalized = normalize_instance_info(keyed)
 
-        # Test with empty dictionary input
-        assert normalize_instance_info({}) == {}
+        assert set(normalized) == {INSTANCE_A, INSTANCE_B}
+        assert normalized[INSTANCE_A]["PlatformName"] == "Amazon Linux"
 
-        # Test with empty list input
-        assert normalize_instance_info([]) == {}
+    def test_falsy_input_is_an_empty_mapping(self):
+        for empty in (None, {}, []):
+            assert normalize_instance_info(empty) == {}
 
-        # Test with dictionary without InstanceId key
-        input_dict_no_id = {"PlatformName": "Linux", "OtherKey": "Value"}
-        assert normalize_instance_info(input_dict_no_id) == {}
-
-        # Test with list containing items without InstanceId
-        input_list_mixed = [
-            {"InstanceId": "i-1234", "PlatformName": "Linux"},
-            {"PlatformName": "Windows", "OtherKey": "Value"},
-            "Not a dictionary",
-            None,
-        ]
-        expected_mixed = {
-            "i-1234": {"InstanceId": "i-1234", "PlatformName": "Linux"}
+    def test_the_platform_lookup_the_acquisition_lambda_relies_on(self):
+        """performMemoryAcquisition selects its SSM document from
+        PlatformName/PlatformDetails read out of this mapping. If the shape is
+        lost the lookup returns {} and every instance is treated as generic
+        Linux - which is how a Windows instance would be sent the LiME document.
+        """
+        windows = {
+            "InstanceId": INSTANCE_B,
+            "PlatformName": "Windows",
+            "PlatformDetails": "Windows",
         }
-        assert normalize_instance_info(input_list_mixed) == expected_mixed
 
-        # Test with dictionary that already has instance IDs as keys
-        input_dict_keys = {
-            "i-1234": {"PlatformName": "Linux", "InstanceId": "i-1234"},
-            "i-5678": {"PlatformName": "Windows", "InstanceId": "i-5678"},
-        }
-        assert normalize_instance_info(input_dict_keys) == input_dict_keys
+        normalized = normalize_instance_info([windows])
+
+        assert normalized[INSTANCE_B]["PlatformDetails"] == "Windows"

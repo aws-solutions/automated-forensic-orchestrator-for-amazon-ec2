@@ -20,6 +20,7 @@ from botocore.exceptions import ClientError
 
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.service import ForensicDataService
 
 logger = get_logger(__name__)
@@ -80,7 +81,7 @@ def handler(event, context):
     # Generate a presigned URL for an Artifact
     ##############
     try:
-        logger.info(f"Generating Presigned URL - {event}")
+        logger.info("Generating Presigned URL - %s", redact(event))
 
         response = s3_client.generate_presigned_url(
             "get_object",

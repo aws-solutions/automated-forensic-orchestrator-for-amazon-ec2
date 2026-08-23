@@ -466,10 +466,14 @@ put_item_fn = MagicMock(return_value={})
 transact_write_item_fn = MagicMock(return_value={})
 get_item_fn = MagicMock(return_value=get_item_event())
 update_item_fn = MagicMock(return_value=get_update_record_event())
+# InstanceId is required: the lookup matches the record to the instance it was
+# asked about, so that a page holding some other instance's record cannot be used
+# to choose this instance's documents.
 describe_instance_information_fn = MagicMock(
     return_value={
         "InstanceInformationList": [
             {
+                "InstanceId": "i-0bf2bf6b175654c6e",
                 "PlatformVersion": "8.0",
                 "PlatformName": "RHEL",
                 "PlatformType": "LINUX",
@@ -491,6 +495,22 @@ def mock_connection(describe_instance_fn):
     mockClient.update_item = update_item_fn
     mockClient.transact_write_items = transact_write_item_fn
     mockClient.describe_instance_information = describe_instance_information_fn
+    # The managed-node lookup filters and paginates now, because
+    # DescribeInstanceInformation returns 10 nodes by default and 50 at most. The
+    # paginator serves whatever describe_instance_information_fn was set to, so
+    # each test still controls the answer the same way.
+    def get_paginator(operation_name):
+        assert operation_name == "describe_instance_information", (
+            "unexpected SSM paginator " + operation_name
+        )
+        paginator = MagicMock()
+        paginator.paginate.side_effect = lambda **kwargs: [
+            describe_instance_information_fn()
+        ]
+        return paginator
+
+    mockClient.get_paginator = get_paginator
+
 
     return mockClient
 

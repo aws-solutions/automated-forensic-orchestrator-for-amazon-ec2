@@ -13,7 +13,26 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 */
-export const SOLUTION_VERSION = process.env['VERSION'] || '1.0.0';
+import { readFileSync } from 'fs';
+import * as path from 'path';
+
+/**
+ * Read the release from the VERSION file rather than a hardcoded literal.
+ *
+ * The literal fallback meant every stack deployed since 1.1.0 advertised
+ * "version: 1.0.0" in its CloudFormation description unless the VERSION
+ * environment variable happened to be exported by the build, which is the
+ * value operators use to identify what they are running.
+ */
+const versionFromFile = (): string => {
+    try {
+        return readFileSync(path.join(__dirname, '..', '..', 'VERSION'), 'utf-8').trim();
+    } catch {
+        return '0.0.0';
+    }
+};
+
+export const SOLUTION_VERSION = process.env['VERSION'] || versionFromFile();
 
 export const SOLUTION_NAME = process.env['SOLUTION_NAME']
     ? process.env['SOLUTION_NAME']

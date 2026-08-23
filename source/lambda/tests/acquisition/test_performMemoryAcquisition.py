@@ -21,8 +21,8 @@ from unittest.mock import MagicMock, Mock, patch
 import boto3
 import pytest
 
-from ...src.common.awsapi_cached_client import AWSCachedClient
 from ...src.acquisition import performMemoryAcquisition
+from ...src.common.awsapi_cached_client import AWSCachedClient
 
 event = {}
 tokens = {}
@@ -371,6 +371,21 @@ send_command_fn = MagicMock()
 modify_document_permission_fn = MagicMock()
 
 
+def get_paginator_fn(operation_name):
+    """Paginator seam for the paginated DescribeInstanceInformation call.
+
+    The handler pages and chunks that call, because a single response reported
+    every instance past the first page as "SSM not installed".
+    """
+    if operation_name != "describe_instance_information":
+        raise AssertionError("unexpected paginator " + operation_name)
+    paginator = MagicMock()
+    paginator.paginate.side_effect = lambda **kwargs: [
+        describe_instance_information_fn(**kwargs)
+    ]
+    return paginator
+
+
 def mock_connection(ec_response):
     mockClient = Mock(boto3.client("ec2"))
     mockClient.get_caller_identity = lambda: {}
@@ -380,6 +395,7 @@ def mock_connection(ec_response):
     mockClient.get_item = get_item_fn
     mockClient.assume_role = assume_role_fn
     mockClient.describe_instance_information = describe_instance_information_fn
+    mockClient.get_paginator = get_paginator_fn
     mockClient.send_command = send_command_fn
     mockClient.update_item = update_item_fn
     mockClient.modify_document_permission = modify_document_permission_fn

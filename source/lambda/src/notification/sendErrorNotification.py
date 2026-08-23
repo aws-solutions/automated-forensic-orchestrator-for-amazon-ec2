@@ -22,6 +22,7 @@ from aws_xray_sdk.core import xray_recorder
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import create_response
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.datatypes import ForensicCategory, ForensicsProcessingPhase
 from ..data.service import ForensicDataService
 
@@ -33,7 +34,7 @@ def handler(event, _):
     """
     Lambda function handler for Send notification
     """
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
     logger.info("Sending error notification for forensic process")
 
     cause = json.loads(event.get("Cause"))
@@ -104,6 +105,47 @@ def handler(event, _):
 
     message = f"Forensic record {forensic_id} aborted due to {error_description}. Target EC2 instance {ec2_instance_id} in account {ec2_instance_account}."
     subject_suffix = "failed"
+
+    # The analysis instance is deliberately left running when an investigation
+    # fails: the capture has already been downloaded and decompressed under
+    # /data and any partial output is still there, so terminating it would
+    # destroy the only surface on which the failure can be diagnosed. Reading
+    # that capture is how the "no kernel banner" acquisition failure was
+    # identified at all.
+    #
+    # Nothing said so, though. terminateForensicInstance sits only on the
+    # success path, so the instance simply stayed up with no mention in the
+    # notification, no entry in the record, and no owner - and these are
+    # 8 vCPU / 32 GiB instances. Say that it is retained, why, and that closing
+    # the case means terminating it.
+    investigation_instance_id = input_body.get(
+        "ForensicInvestigationInstanceId"
+    )
+    if investigation_instance_id:
+        retention_note = (
+            f" Forensic analysis instance {investigation_instance_id} has been "
+            "left running on purpose so the evidence under /data can be "
+            "examined; connect with Session Manager. It is not terminated "
+            "automatically - terminate it when the case is closed."
+        )
+        message += retention_note
+
+        fds.add_forensic_timeline_event(
+            id=forensic_id,
+            name="Retaining analysis instance",
+            description=(
+                f"Analysis instance {investigation_instance_id} retained for "
+                "diagnosis after a failed investigation. Terminate it when the "
+                "case is closed."
+            ),
+            phase=ForensicsProcessingPhase.FAILED,
+            component_id="sendErrorNotification",
+            component_type="Lambda",
+            event_data={
+                "ForensicInvestigationInstanceId": investigation_instance_id,
+                "retainedForDiagnosis": True,
+            },
+        )
 
     sns_client.publish(
         TopicArn=notification_arn,

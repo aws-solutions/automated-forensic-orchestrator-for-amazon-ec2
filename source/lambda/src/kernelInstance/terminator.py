@@ -22,6 +22,7 @@ from ..common.awsapi_cached_client import AWSCachedClient
 from ..common.common import create_response
 from ..common.exception import InvestigationError
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.datatypes import ForensicsProcessingPhase
 
 # initialise loggers
@@ -30,7 +31,7 @@ logger = get_logger(__name__)
 
 @xray_recorder.capture("Terminate Builder Instance")
 def handler(event, _):
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
 
     input_body = event["Payload"]["body"]
     instance_id = input_body["InstanceId"]

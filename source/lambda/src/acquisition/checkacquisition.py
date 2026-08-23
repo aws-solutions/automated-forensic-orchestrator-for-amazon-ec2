@@ -1,11 +1,12 @@
 from ..common.common import create_response
 from ..common.log import get_logger
+from ..common.redact import redact
 
 logger = get_logger(__name__)
 
 
 def lambda_handler(event, context):
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
     input_body = {}
     input_body = event["Payload"]["body"]
     output = input_body.copy()

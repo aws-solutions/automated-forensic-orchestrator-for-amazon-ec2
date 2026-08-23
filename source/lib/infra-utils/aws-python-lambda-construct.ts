@@ -103,7 +103,25 @@ export class PythonLambdaConstruct extends Construct {
             ...(!skipCodeSigning && {
                 codeSigningConfig: this.createCodeSigningConfig(),
             }),
-            code: Code.fromAsset(resourceCodePath, { exclude: ['tests'] }),
+            // Excluding build and test artefacts is what makes the asset hash a
+            // function of the committed source alone. Bundling __pycache__ made
+            // every synth depend on whether tests had been run first, so each
+            // deploy replaced all 26 functions even with no code change, and
+            // shipped bytecode compiled by whichever interpreter happened to be
+            // local.
+            code: Code.fromAsset(resourceCodePath, {
+                exclude: [
+                    'tests',
+                    '__pycache__',
+                    '*.pyc',
+                    '*.pyo',
+                    '.pytest_cache',
+                    '*.egg-info',
+                    'requirements.in',
+                    'requirements.txt',
+                    'python_license.output',
+                ],
+            }),
             timeout: Duration.seconds(900),
             runtime: DEFAULT_PYTHON_VERSION,
             memorySize: 1024,

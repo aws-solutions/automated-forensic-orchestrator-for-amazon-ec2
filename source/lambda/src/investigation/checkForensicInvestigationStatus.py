@@ -26,6 +26,7 @@ from ..common.exception import (
     InvestigationError,
 )
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.datatypes import (
     ArtifactCategory,
     ArtifactStatus,
@@ -41,7 +42,7 @@ logger = get_logger(__name__)
 
 @xray_recorder.capture("Check Forensic Investigation Status")
 def handler(event, _):
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
 
     region = os.environ["AWS_REGION"]
     ssmclient = AWSCachedClient(region).get_connection("ssm")
@@ -283,7 +284,7 @@ def check_memory_investigation_status(
         CommandId=command_id,
         InstanceId=input_body["ForensicInvestigationInstanceId"],
     )
-    logger.info(input_body)
+    logger.info("input %s", redact(input_body))
     if ssm_response.get("StatusDetails", None) in [
         "Pending",
         "Delayed",

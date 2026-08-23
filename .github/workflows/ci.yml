@@ -1,0 +1,123 @@
+# Continuous integration for the Automated Forensics Orchestrator for Amazon EC2.
+#
+# Until now nothing ran the test suites automatically. That mattered more than it
+# sounds: most of what these suites assert was learned from live AWS runs and
+# cannot be rediscovered by reading the code - that a shebang on line 2 is a
+# comment, that a doubled backslash in a document's JSON silently changes what
+# the shell deletes, that an extra `tee` consumer can corrupt the evidence
+# digest, that editing an Image Builder component without bumping its version
+# fails in the customer's account with no local signal. All of it was opt-in.
+#
+# One non-obvious requirement: pin the Python version here. `make install`
+# depends on the `virtualenv` target, which does `rm -rf .venv && python -m venv
+# .venv`, and `check-py-version` inspects the *old* venv before that rebuild - so
+# on a machine where `python` is not 3.12, the suites run green against the wrong
+# interpreter while the project targets 3.12. setup-python makes `python` the
+# intended version, which is what makes the Makefile correct here.
+#
+# Deliberately not gated yet: `black --check`, `isort --check-only` and
+# `prettier --check`. All three fail on files this project has never formatted
+# (6, several, and 119 respectively), so gating on them would make CI red on its
+# first run for reasons unrelated to any change - and a CI that is red by default
+# is a CI people learn to ignore. Format the tree in its own change, then add
+# them here.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      # 3.12 is the Lambda runtime this solution targets. See the note above:
+      # this step is what stops the Makefile rebuilding the venv on some other
+      # interpreter.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Confirm the interpreter the Makefile will pick up
+        run: |
+          python --version
+          python -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else 1)'
+
+      # npm ci, not npm install: every tool this workflow runs (eslint, jest,
+      # typescript, prettier, the cdk CLI) is pinned in package-lock.json, so the
+      # gates below are reproducible rather than whatever the registry serves.
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --quiet --upgrade pip
+          .venv/bin/python -m pip install --quiet -r lambda/requirements.txt
+          .venv/bin/python -m pip install --quiet -r requirements-test.txt
+          # cfn-lint is not a project dependency - nothing in the solution
+          # imports it - so it is installed here rather than added to
+          # requirements-test.in and shipped to every developer. Pinned so the
+          # gate cannot change meaning between runs.
+          .venv/bin/python -m pip install --quiet 'cfn-lint==1.46.0'
+
+      - name: TypeScript compiles
+        run: npx tsc --noEmit
+
+      - name: ESLint (errors fail, warnings do not)
+        run: npx eslint .
+
+      - name: flake8
+        run: .venv/bin/flake8 lambda/src/
+
+      - name: mypy
+        run: >-
+          .venv/bin/mypy lambda/src/ --exclude tests/
+          --exclude lambda/src/common/awsapi_cached_client.py
+
+      # Mirrors the Makefile's own gate, including --fail-under=80. Coverage was
+      # 87% when this workflow was added.
+      - name: Python tests and coverage gate
+        run: |
+          .venv/bin/coverage erase
+          .venv/bin/pytest -q --cov-config .coveragerc \
+            --cov=lambda/src --cov=lambda/common lambda/tests/
+          .venv/bin/coverage report --fail-under=80
+
+      # Single worker on purpose: several suites synthesize a stack, and
+      # synthesizing builds the Lambda dependency layer into one fixed directory
+      # that installDependencies clears with rm -rf. See jest.config.js.
+      - name: TypeScript tests
+        run: npx jest --ci
+
+      - name: cfn-lint the cross-account prerequisite
+        run: .venv/bin/cfn-lint deployment-prerequisties/cross-account-role.yml
+
+      # No AWS credentials required: the app takes every value it needs from
+      # cdk.json context, so synth is a pure function of the repository. This is
+      # the gate that catches a construct change that type-checks but cannot
+      # produce a template.
+      - name: CDK synthesizes
+        run: npx cdk synth -q

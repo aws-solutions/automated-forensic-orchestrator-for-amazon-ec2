@@ -53,7 +53,6 @@ export interface ForensicsAcquisitionProps {
 export class ForensicsAcquisitionConstruct extends Construct {
     public performDiskAcquisitionSetupLambda: IFunction;
 
-    public performInstanceIsolationLambda: IFunction;
 
     public performInstanceSnapShotLambda: IFunction;
 
@@ -119,34 +118,15 @@ export class ForensicsAcquisitionConstruct extends Construct {
 
         props.instanceTable.grantReadWriteData(this.performDiskAcquisitionSetupLambda);
 
-        //-------------------------------------------------------------------------
-        // Lambda - Perform Disk Isolation in Compromised instance
-        //-------------------------------------------------------------------------
-        this.performInstanceIsolationLambda = new PythonLambdaConstruct(
-            this,
-            'instanceIsolation',
-            {
-                handler: 'src.acquisition.performIsolation.handler',
-                applicationName: 'performIsolation',
-
-                functionName: 'Fo-performIsolation',
-                sourceCodePath: path.resolve(__dirname, this.LAMBDA_RELATIVE_PATH),
-                dashboard: props.dashboard,
-
-                environment: {
-                    ...props.environment,
-                    INSTANCE_TABLE_NAME: props.instanceTable.tableName,
-                    APP_ACCOUNT_ROLE: `${APP_ACCOUNT_ASSUME_ROLE_NAME}-${
-                        Stack.of(this).region
-                    }`,
-                },
-                vpc: props.vpc,
-                deadLetterQueue: props.forensicDeadLetterQueue,
-            }
-        ).function;
-
-        assumeRoleIAMPolicy.attachToRole(this.performInstanceIsolationLambda.role!);
-        props.instanceTable.grantReadWriteData(this.performInstanceIsolationLambda);
+        // Fo-performIsolation is deliberately not created. It declared the
+        // handler src.acquisition.performIsolation.handler, but that module has
+        // never existed in any release, so the function raised
+        // Runtime.ImportModuleError on every invocation. No state machine ever
+        // invoked it either - isolation is performed by Fo-isolateEc2Instance
+        // (src.isolation.isolateEc2.handler), which the triage state machine
+        // wires up as instanceIsolationLambda. Removing it drops a permanently
+        // broken function, its role, policy, signing profile and code signing
+        // config from every deployment.
         //-------------------------------------------------------------------------
         // Lambda - Perform Instance Snapshot in Compromised instance
         //-------------------------------------------------------------------------

@@ -329,6 +329,22 @@ def mock_connection(ec_response):
     mockClient._get_local_account_id = lambda: {}
     mockClient.describe_instances = lambda InstanceIds: response
     mockClient.describe_instance_information = describe_instance_information_fn
+    # The managed-node lookup filters and paginates now, because
+    # DescribeInstanceInformation returns 10 nodes by default and 50 at most. The
+    # paginator serves whatever describe_instance_information_fn was set to, so
+    # each test still controls the answer the same way.
+    def get_paginator(operation_name):
+        assert operation_name == "describe_instance_information", (
+            "unexpected SSM paginator " + operation_name
+        )
+        paginator = MagicMock()
+        paginator.paginate.side_effect = lambda **kwargs: [
+            describe_instance_information_fn()
+        ]
+        return paginator
+
+    mockClient.get_paginator = get_paginator
+
     mockClient.update_item = update_item_fn
     mockClient.get_item = get_item_fn
     mockClient.put_item = put_item_fn

@@ -27,6 +27,8 @@ from kubernetes import client, config
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import clean_date_format, create_response
 from ..common.log import get_logger
+from ..common.redact import redact
+from ..common.managed_nodes import describe_node
 from ..data.datatypes import Finding, ForensicsProcessingPhase, ResourceType
 from ..data.service import ForensicDataService
 
@@ -154,7 +156,7 @@ def lambda_handler(event, context):
             cluster_in_scope, event = is_single_eks_cluster_in_scope(event)
 
             logger.info(f"EKS cluster in scope is {cluster_in_scope}")
-            logger.info(f"Event is {event}")
+            logger.info("Event is %s", redact(event))
 
             cluster_name, cluster_account, cluster_region = (
                 get_cluster_details(event)
@@ -211,11 +213,18 @@ def lambda_handler(event, context):
                         }
                     ]
                 )
-                affected_node_list = list(
+                # [id], not list(id). InstanceId is a string, and list() on a
+                # string returns its characters: list("i-0abc...") is
+                # ['i', '-', '0', 'a', ...], 19 entries. That went into the
+                # forensic record as resource_id and then into
+                # ForensicInstanceIds, so every downstream acquisition iterated
+                # the characters and tried to image instances called "i", "-"
+                # and "0". The EKS Node path could not have worked.
+                affected_node_list = [
                     affected_instance_detail["Reservations"][0]["Instances"][
                         0
                     ]["InstanceId"]
-                )
+                ]
             else:
                 affected_node_complete_list = get_affected_node_from_pod(
                     cluster_name,
@@ -766,7 +775,12 @@ def get_affected_resource_in_cluster(
         ]["Details"]["Other"][
             "kubernetesDetails/kubernetesWorkloadDetails/type"
         ].lower()
-        if affected_resource_type == "deployments" or "deployment":
+        # `x == "deployments" or "deployment"` is always true: the second
+        # operand is a non-empty string literal, not a comparison. Every
+        # workload finding therefore took the Deployment branch and the Pods
+        # branch below was unreachable, so a Pods finding was looked up as a
+        # deployment name and matched nothing.
+        if affected_resource_type in ("deployments", "deployment"):
             logger.info("Deployment resource detected")
             affected_resource_type = "Deployment"
             affected_deployment = event["detail"]["findings"][0]["Resources"][
@@ -908,16 +922,19 @@ def retrieve_instance_info(logger, ec2_client, instance_id: str):
 
 
 def get_instance_platform(ssm_client, instance_id: str, instance_info: dict):
-    filter_by_id = [{"Key": "InstanceIds", "Values": [instance_id]}]
-    instance_platform_info = ssm_client.describe_instance_information(
-        Filters=filter_by_id
-    )
-    instance_list = instance_platform_info.get("InstanceInformationList", {})
-    if len(instance_list) == 0:
-        raise Exception("not able to accuire instance detail info")
-    platform_type = instance_list[0].get("PlatformType", "")
-    platform_name = instance_list[0].get("PlatformName", "")
-    platform_version = instance_list[0].get("PlatformVersion", "")
+    # Paginated via the shared lookup. Filtering alone is not enough: an empty
+    # first page carrying a NextToken is a permitted response, and reading only
+    # that page raised "not able to accuire instance detail info" for an instance
+    # that was registered - which fails triage before any evidence is taken.
+    node = describe_node(ssm_client, instance_id)
+    if node is None:
+        raise Exception(
+            f"{instance_id} is not registered with Systems Manager, so its "
+            "platform cannot be determined and no document can be selected"
+        )
+    platform_type = node.get("PlatformType", "")
+    platform_name = node.get("PlatformName", "")
+    platform_version = node.get("PlatformVersion", "")
 
     instance_info["PlatformType"] = platform_type
     instance_info["PlatformName"] = platform_name

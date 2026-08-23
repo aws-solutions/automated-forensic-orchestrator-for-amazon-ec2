@@ -1,0 +1,128 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Amazon Linux 2023 instances to build the LiME kernel module and pre-seed the forensic tool sources",
+    "parameters": {
+        "s3bucket": {
+            "type": "String",
+            "description": "(Required) S3 bucket details.",
+            "default": "S3 Bucket Name"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details",
+            "default": "ap-southeast-2"
+        },
+        "ExecutionTimeout": {
+            "type": "String",
+            "description": "(Required) SSM document execution timeout (seconds)",
+            "default": "4000"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": [
+                    "platformType",
+                    "Linux"
+                ]
+            },
+            "inputs": {
+                "timeoutSeconds": "{{ExecutionTimeout}}",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "# Amazon Linux 2023 forensic tool pre-seeder: builds the LiME module for the",
+                    "# builder's own kernel and uploads it with the LiME and volatility3 sources, so",
+                    "# a memory acquisition on a matching kernel does not have to compile anything on",
+                    "# the instance under investigation.",
+                    "# Like the AL2023 symbol document this fails loudly. The Amazon Linux 2 version",
+                    "# exited 0 whether or not the module was ever produced, so a deployment reached",
+                    "# CREATE_COMPLETE with nothing usable in the evidence bucket.",
+                    "# Upstream versions, pinned. An unpinned clone builds whatever is at the tip of",
+                    "# the default branch on the day of the incident - into the tooling that produces",
+                    "# and reads forensic evidence. These match the pins already used by the",
+                    "# acquisition and investigation documents so that one release means one set of",
+                    "# tool versions. Note 504ensicsLabs/LiME redirects to jtsylve/LiME, its original",
+                    "# author; cloning the old path works only while GitHub honours that redirect.",
+                    "LIME_REF=v1.12.0",
+                    "VOL3_REF=v2.28.0",
+                    "set -o pipefail",
+                    "fail() { echo \"TOOL_BUILD_FAILED: $1\" >&2; exit 1; }",
+                    "kernel_release=$(uname -r)",
+                    "# AL2023 names kernel sub-packages per kernel line (kernel6.18-devel) from 6.12",
+                    "# onwards, but keeps the unversioned name (kernel-devel) on the 6.1 line.",
+                    "kernel_line=$(uname -r | cut -d. -f1,2)",
+                    "echo \"building forensic tools for ${kernel_release} (line ${kernel_line})\"",
+                    "grep -q 'platform:al2023' /etc/os-release || fail \"not an Amazon Linux 2023 instance: $(. /etc/os-release; echo $PRETTY_NAME)\"",
+                    "# /tmp is a RAM-backed tmpfs on AL2023 capped at ~50% of memory; the two source",
+                    "# trees, the kernel build tree and the module do not reliably fit there.",
+                    "workdir=/var/tmp/forensic-tools-builder",
+                    "sudo rm -rf $workdir && mkdir -p $workdir && cd $workdir || fail 'cannot create work directory'",
+                    "# git, gcc, make and zip are all absent from the AL2023 AMI, and the LiME",
+                    "# Makefile needs a compiler plus the headers for the running kernel. awscli is",
+                    "# deliberately not installed: AL2023 ships awscli-2 and there is no awscli",
+                    "# package in its repositories.",
+                    "sudo dnf install -y -q git gcc make zip || fail 'unable to install build tools'",
+                    "install_kernel_devel() {",
+                    "    # Pin the running kernel release: a kernel-devel for any other release",
+                    "    # would build a module the acquisition cannot insert.",
+                    "    sudo dnf install -y -q \"kernel${kernel_line}-devel-${kernel_release}\" >/dev/null 2>&1 && { echo \"installed kernel${kernel_line}-devel-${kernel_release}\"; return 0; }",
+                    "    sudo dnf install -y -q \"kernel-devel-${kernel_release}\" >/dev/null 2>&1 && { echo \"installed kernel-devel-${kernel_release}\"; return 0; }",
+                    "    return 1",
+                    "}",
+                    "install_kernel_devel || fail \"no kernel-devel package for ${kernel_release}\"",
+                    "test -d /lib/modules/${kernel_release}/build || fail \"no kernel build tree for ${kernel_release} - cannot compile LiME\"",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "aws configure set default.s3.max_concurrent_requests 20",
+                    "cd $workdir || fail 'cannot enter work directory'",
+                    "git clone --depth 1 --branch \"$LIME_REF\" https://github.com/jtsylve/LiME.git || fail \"LiME clone of $LIME_REF failed\"",
+                    "# The acquisition document unzips this into a LiME directory, so archive the",
+                    "# directory itself rather than its contents.",
+                    "zip -q -r LiME.zip LiME || fail 'LiME source archive failed'",
+                    "test -s $workdir/LiME.zip || fail 'LiME source archive is empty'",
+                    "aws s3 cp $workdir/LiME.zip s3://{{s3bucket}}/tools/LiME/ --acl bucket-owner-full-control || fail 's3 upload of the LiME source failed'",
+                    "echo \"s3 copy complete: s3://{{s3bucket}}/tools/LiME/LiME.zip\"",
+                    "cd $workdir/LiME/src || fail 'LiME source tree missing'",
+                    "make || fail 'LiME module build failed'",
+                    "# Name the module lime-<uname -r>.ko: that is the object the memory",
+                    "# acquisition document looks for before falling back to compiling on the",
+                    "# instance under investigation.",
+                    "module=lime-${kernel_release}.ko",
+                    "# Only upload a module that actually built. Copying unconditionally used to",
+                    "# publish nothing on failure while the step still reported success.",
+                    "test -s $module || fail \"LiME build produced no ${module}\"",
+                    "echo \"LiME module built: $(ls -lh $module | awk '{print $5}')\"",
+                    "aws s3 cp $module s3://{{s3bucket}}/tools/LiME/$module --acl bucket-owner-full-control || fail 's3 upload of the LiME module failed'",
+                    "echo \"s3 copy complete: s3://{{s3bucket}}/tools/LiME/$module\"",
+                    "cd $workdir || fail 'cannot return to work directory'",
+                    "git clone --depth 1 --branch \"$VOL3_REF\" https://github.com/volatilityfoundation/volatility3.git || fail \"volatility3 clone of $VOL3_REF failed\"",
+                    "zip -q -r volatility3.zip volatility3 || fail 'volatility3 source archive failed'",
+                    "test -s $workdir/volatility3.zip || fail 'volatility3 source archive is empty'",
+                    "aws s3 cp $workdir/volatility3.zip s3://{{s3bucket}}/tools/volatility3/ --acl bucket-owner-full-control || fail 's3 upload of the volatility3 source failed'",
+                    "echo \"s3 copy complete: s3://{{s3bucket}}/tools/volatility3/volatility3.zip\"",
+                    "sudo rm -rf $workdir",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}

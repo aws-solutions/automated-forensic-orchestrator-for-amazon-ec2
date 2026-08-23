@@ -90,8 +90,6 @@ export class TriageOrchestratorConstruct extends Construct {
             {
                 performDiskAcquisitionSetupLambda:
                     props.forensicsAcquisitionFns.performDiskAcquisitionSetupLambda,
-                performInstanceIsolationLambda:
-                    props.forensicsAcquisitionFns.performInstanceIsolationLambda,
                 performInstanceSnapShotLambda:
                     props.forensicsAcquisitionFns.performInstanceSnapShotLambda,
                 snapShotCompletionCheckerLambda:

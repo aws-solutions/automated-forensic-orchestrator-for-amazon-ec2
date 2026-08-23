@@ -10,6 +10,33 @@ specific language governing permissions and limitations under the License.
 THIRD PARTY COMPONENTS
 **********************
 
+The forensic tooling below is NOT redistributed with this solution. Each is
+downloaded or built at acquisition or investigation time, onto instances in the
+deploying customer's own account, at the pinned versions recorded in the SSM
+documents under source/ssm-documents. It is listed here so that operators know
+which licences apply to the tools their evidence passes through:
+
+LiME (Linux Memory Extractor), pinned at tag v1.12.0 from
+  https://github.com/jtsylve/LiME, under the GPL-2.0 license. Compiled into a
+  kernel module and loaded on the instance under investigation. Not linked into,
+  distributed with, or derived from this solution's own code.
+AVML (Acquire Volatile Memory for Linux), pinned at release v0.20.0 from
+  https://github.com/microsoft/avml, under the MIT license. Downloaded as a
+  released binary and verified against a per-architecture SHA256 digest.
+Volatility 3, pinned at tag v2.28.0 from
+  https://github.com/volatilityfoundation/volatility3, under the Volatility
+  Software License (VSL), a modified BSD-style license.
+dwarf2json, pinned at tag v0.9.0 from
+  https://github.com/volatilityfoundation/dwarf2json, under the MIT license.
+plaso / log2timeline, run from the log2timeline/plaso container image pinned by
+  digest in the analysis AMI, under the Apache-2.0 license.
+pefile, pinned at version 2024.8.26 from PyPI, under the MIT license.
+winpmem, from https://github.com/Velocidex/WinPmem, under the Apache-2.0
+  license. Used for Windows memory acquisition.
+
+The components below are dependencies of this software:
+
+
 This software includes third party software subject to the following copyrights:
 
 @aws-cdk/assert under the Apache-2.0 license.

@@ -37,6 +37,7 @@ import {
     APP_ACCOUNT_ASSUME_ROLE_NAME,
     FORENSIC_ISOLATION_PROFILE_NAME,
 } from '../infra-utils/infra-types';
+import { NagSuppressions } from 'cdk-nag';
 
 export interface ForensicsCoreProps {
     forensicDeadLetterQueue: IQueue;
@@ -70,13 +71,45 @@ export class ForensicsCore extends Construct {
             vpc: props.vpc,
             description: 'Allow ssh access to ec2 instances',
         });
-        //   https://www.youtube.com/watch?v=pPCuCYrhIyI proper way to isolate instance
-        //  by covert all traffic to untracked https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html
+        /**
+         * An all-traffic ingress rule from any IPv4 address, on purpose.
+         *
+         * This security group is never used to *permit* access. Attaching a rule
+         * that matches all traffic converts an instance's existing flows from
+         * tracked to untracked, which makes the kernel drop the established
+         * connections instead of letting them continue after the isolation group
+         * is swapped in. Without it, an attacker's existing SSH or C2 session
+         * survives isolation until it happens to time out.
+         *
+         * https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html
+         *
+         * It is applied only as an intermediate step by the isolation Lambda, on
+         * an instance that is being cut off, and the group it is replaced with
+         * (noRuleSG below) has no rules at all. The residual exposure is the
+         * window between the two swaps, on an instance already believed
+         * compromised, in a VPC the customer controls.
+         *
+         * Narrowing the CIDR to the VPC range would not achieve the same thing:
+         * connection tracking is only bypassed when the rule matches all traffic.
+         */
         allAllTrafficSG.addIngressRule(
             ec2.Peer.anyIpv4(),
             ec2.Port.allTraffic(),
-            'allow all'
+            'allow all: converts existing flows to untracked so isolation drops them'
         );
+        NagSuppressions.addResourceSuppressions(allAllTrafficSG, [
+            {
+                id: 'AwsSolutions-EC23',
+                reason:
+                    'Deliberate. An all-traffic rule is the documented way to move an '
+                    + 'instance\'s existing connections from tracked to untracked so that '
+                    + 'isolation terminates them rather than leaving an attacker\'s session '
+                    + 'established. See the connection-tracking documentation linked above. '
+                    + 'The group is applied only transiently by the isolation Lambda to an '
+                    + 'instance being contained, and is replaced by a group with no rules. '
+                    + 'Narrowing the CIDR would defeat the mechanism.',
+            },
+        ]);
 
         const noRuleSG = new SecurityGroup(this, 'IsolationSecurityGroupNoRule', {
             vpc: props.vpc,
@@ -150,6 +183,24 @@ export class ForensicsCore extends Construct {
                 actions: ['iam:GetInstanceProfile'],
                 resources: [`arn:aws:iam::${Stack.of(this).account}:instance-profile/*`],
             }),
+            /**
+             * iam:PutRolePolicy on every role in the account, deliberately.
+             *
+             * Isolation attaches a deny-all inline policy to the instance
+             * profile role of the compromised instance, which revokes that
+             * instance's AWS access immediately rather than waiting for its
+             * credentials to expire. Which role that is depends on which
+             * instance turns out to be compromised, so it is not known when this
+             * stack is deployed - and IAM offers no condition key for the inline
+             * policy name, so there is nothing narrower to scope to.
+             *
+             * Residual risk, stated rather than hidden: a principal able to
+             * invoke this Lambda can cause an inline policy to be written onto
+             * any role in this account. Control who may invoke it, and alert on
+             * iam:PutRolePolicy in CloudTrail. Removing the permission removes
+             * the credential-revocation step from isolation, leaving the
+             * instance's role usable until its session expires.
+             */
             new PolicyStatement({
                 effect: Effect.ALLOW,
                 actions: ['iam:PutRolePolicy'],
@@ -250,7 +301,13 @@ export class ForensicsCore extends Construct {
         // Lambda - Function to Check the instance Acquisition requirement
         //-------------------------------------------------------------------------
         this.checkAcquisitionLambda = new PythonLambdaConstruct(this, 'checkAcquisitionFunction', {
-            handler: 'src.acquisition.checkAcquisition.lambda_handler',
+            // The module file is checkacquisition.py, all lower case. Declaring
+            // checkAcquisition here resolved on a case-insensitive developer
+            // filesystem but not on Lambda, so this function raised
+            // Runtime.ImportModuleError. It is the second state of the triage
+            // state machine and that state has no Catch, so every triage
+            // execution aborted before reaching acquisition.
+            handler: 'src.acquisition.checkacquisition.lambda_handler',
             applicationName: 'checkAcquisition',
             functionName: 'Fo-checkAcquisition',
             initialPolicy: [...additionalPolicies],

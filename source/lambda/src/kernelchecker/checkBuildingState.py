@@ -19,6 +19,7 @@ from aws_xray_sdk.core import xray_recorder
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import create_response
 from ..common.log import get_logger
+from ..common.redact import redact
 
 # initialise loggers
 logger = get_logger(__name__)
@@ -32,7 +33,7 @@ def handler(event, context):
 
     input_body = event["Payload"]["body"]
     output_body = input_body.copy()
-    logger.info(event)
+    logger.info("event %s", redact(event))
     instance_id = input_body["InstanceId"]
     output_body["isInstanceProfileBuildingComplete"] = False
     try:

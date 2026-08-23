@@ -16,7 +16,7 @@
 */
 import { CfnMapping, CustomResource, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { ITable } from 'aws-cdk-lib/aws-dynamodb';
-import { IVpc } from 'aws-cdk-lib/aws-ec2';
+import { AmazonLinux2023Kernel, IVpc, MachineImage } from 'aws-cdk-lib/aws-ec2';
 import {
     Effect,
     IRole,
@@ -31,6 +31,7 @@ import { Dashboard } from 'aws-cdk-lib/aws-cloudwatch';
 import { PythonLambdaConstruct } from '../infra-utils/aws-python-lambda-construct';
 import { IQueue } from 'aws-cdk-lib/aws-sqs';
 import { APP_ACCOUNT_ASSUME_ROLE_NAME, TOOLS_AMI } from '../infra-utils/infra-types';
+import { SOLUTION_VERSION } from '../infra-utils/aws-solution-environment';
 import {
     Chain,
     Choice,
@@ -472,14 +473,46 @@ export class ForensicsInvestigationConstruct extends Construct {
             };
         } = this.node.tryGetContext(TOOLS_AMI);
 
-    
+
         this.createKernelBuildingStepFunction(props, createInstancePolicies, investigationAdditionalPolicies);
 
-        const toolsAMITable = new CfnMapping(this, 'tools-ami-table', {
-            mapping: toolsAMI,
-        });
+        /**
+         * The tools builder AMI resolves from the public Amazon Linux 2023 SSM
+         * parameter by default, and only falls back to the hardcoded map when
+         * one is supplied.
+         *
+         * The map listed nine regions, so `Fn::FindInMap` - which has no
+         * default - failed at stack-create in the other twenty-five. Its ids
+         * also decay: every entry was a deprecated 2022 Amazon Linux 2 image
+         * until this release refreshed them, and the refreshed ones already
+         * carry a deprecation date. Resolving the parameter instead means the
+         * builder is current in every region without anyone editing cdk.json.
+         *
+         * The tradeoff: the parameter re-resolves on update as well as create,
+         * so an unrelated `cdk deploy` can move this AMI with nothing showing
+         * in `cdk diff`. That is acceptable here because the builder is
+         * ephemeral and only compiles LiME and dwarf2json - it holds no state
+         * and no evidence. Populate `toolsAMI` to pin it instead, which an
+         * air-gapped or change-controlled account will want.
+         */
+        const hasPinnedToolsAmis =
+            toolsAMI && Object.keys(toolsAMI).length > 0;
 
-        const amiID: string = toolsAMITable.findInMap(Stack.of(this).region, 'amiID');
+        const amiID: string = hasPinnedToolsAmis
+            ? new CfnMapping(this, 'tools-ami-table', {
+                  mapping: toolsAMI,
+              }).findInMap(Stack.of(this).region, 'amiID')
+            : MachineImage.latestAmazonLinux2023({
+                  // Stated rather than inherited. AmazonLinux2023Kernel.DEFAULT
+                  // is the 6.1 line, where kernel-devel and kernel-debuginfo
+                  // keep their unversioned names; from 6.12 they become
+                  // kernel<line>-devel. The AL2023 builder documents try the
+                  // versioned name first and fall back, so both work, but which
+                  // branch runs is worth being deliberate about. CDK_LATEST is
+                  // avoided on purpose: it moves the AMI whenever a new kernel
+                  // is published, replacing the builder on an unrelated deploy.
+                  kernel: AmazonLinux2023Kernel.DEFAULT,
+              }).getImage(this).imageId;
 
         this.forensicToolsLambda = new PythonLambdaConstruct(
             this,
@@ -518,6 +551,12 @@ export class ForensicsInvestigationConstruct extends Construct {
                 Name: 'Forensic Tools Loader',
                 Description: 'Trigger Forensic Tools loader Action',
                 Id: 'ForensicLoaderAction',
+                // The service token and the other three properties never
+                // change, so CloudFormation has no reason to send this resource
+                // an Update and a fix to the loader would never run on an
+                // existing deployment. Carrying the solution version means a
+                // version bump re-runs the builder.
+                BuildVersion: SOLUTION_VERSION,
             },
         });
     }

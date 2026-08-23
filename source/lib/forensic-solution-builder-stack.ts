@@ -63,10 +63,15 @@ import {
     APP_ACCOUNT_FORENSIC_KMS_KEY_ALIAS,
     DISK_SIZE,
     DISK_SIZE_CONFIG,
+    FORENSIC_INSTANCE_TYPE,
+    FORENSIC_INSTANCE_TYPE_CONFIG,
     FORENSIC_IMAGE_NAME_CONFIG,
     IS_SAND_BOX,
+    MEMORY_ACQUISITION_TOOLS,
+    MEMORY_ACQUISITION_TOOLS_CONFIG,
     RETAIN_DATA,
     SECURITYHUB_ACCOUNT,
+    SSM_OUTPUT_LOG_GROUP_PREFIX,
     SUBNET_GROUP_CONFIG,
     VOL3_SYMBOLS_BUCKET,
     VOLATILITY3_SYMBOLS_PREFIX,
@@ -315,6 +320,14 @@ export class ForensicsSolutionsConstructsStack extends Stack {
             ? this.node.tryGetContext(DISK_SIZE_CONFIG)
             : DISK_SIZE;
 
+        const forensicInstanceType =
+            this.node.tryGetContext(FORENSIC_INSTANCE_TYPE_CONFIG) ||
+            FORENSIC_INSTANCE_TYPE;
+
+        const memoryAcquisitionTools =
+            this.node.tryGetContext(MEMORY_ACQUISITION_TOOLS_CONFIG) ||
+            MEMORY_ACQUISITION_TOOLS;
+
         this.forensicDeadLetterQueue = new Queue(this, 'ForensicDeadLetterQueue', {
             encryption: QueueEncryption.KMS,
             encryptionMasterKey: this.kmsKeys.forensicSQSEncryptionKey.key,
@@ -377,6 +390,41 @@ export class ForensicsSolutionsConstructsStack extends Stack {
         this.forensicBucket.grantRead(investigationInstanceRole);
         this.forensicBucket.grantReadWrite(investigationInstanceRole);
 
+        // Every SSM command this solution sends sets CloudWatchOutputEnabled,
+        // but AmazonSSMManagedInstanceCore carries no CloudWatch Logs write
+        // permissions, so the agent could never create the log group and the
+        // archiving was silently a no-op. SSM keeps only the first 24 KB of a
+        // command's output and volatility3's progress output alone exceeds
+        // that, so a failing memory investigation lost the very lines that
+        // said why. This is the analysis host, the kernel symbol builder and
+        // the tools builder - every instance the solution owns.
+        //
+        // Scoped to the prefix produced by ssm_output_log_group() rather than
+        // all log groups, which is only possible because the log group is no
+        // longer named after the forensic id alone.
+        investigationInstanceRole.addToPolicy(
+            new PolicyStatement({
+                actions: [
+                    'logs:CreateLogGroup',
+                    'logs:CreateLogStream',
+                    'logs:PutLogEvents',
+                    'logs:DescribeLogStreams',
+                ],
+                resources: [
+                    `arn:${Stack.of(this).partition}:logs:${
+                        Stack.of(this).region
+                    }:${Stack.of(this).account}:log-group:${
+                        SSM_OUTPUT_LOG_GROUP_PREFIX
+                    }*`,
+                    `arn:${Stack.of(this).partition}:logs:${
+                        Stack.of(this).region
+                    }:${Stack.of(this).account}:log-group:${
+                        SSM_OUTPUT_LOG_GROUP_PREFIX
+                    }*:log-stream:*`,
+                ],
+            })
+        );
+
         //Adds SSM  Managed policy to role
         investigationInstanceRole.addManagedPolicy(
             ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore')
@@ -408,6 +456,7 @@ export class ForensicsSolutionsConstructsStack extends Stack {
                     ...this.lambdaEnvironmentProps,
                     ...{ S3_BUCKET_KEY_ARN: this.forensicBucketKey.keyArn },
                     FORENSIC_EBS_KEY_ID: this.kmsKeys.volumeEncryptionKey?.key.keyArn,
+                    MEMORY_ACQUISITION_TOOLS: memoryAcquisitionTools,
                 },
                 forensicBucket: this.forensicBucket,
                 instanceProfileARN: investigationInstanceProfile.attrArn!,
@@ -453,6 +502,7 @@ export class ForensicsSolutionsConstructsStack extends Stack {
                     VOLATILITY2_PROFILES_BUCKET: vol3ProfilesBucket,
                     VOLATILITY2_PROFILES_PREFIX: vol3SymbolsPrefix,
                     DISK_SIZE: diskSize,
+                    FORENSIC_INSTANCE_TYPE: forensicInstanceType,
                 },
                 forensicBucket: this.forensicBucket,
                 s3CopyRole: this.s3CopyRole,

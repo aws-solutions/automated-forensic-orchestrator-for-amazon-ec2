@@ -1,0 +1,280 @@
+name: ForensicAnalysisTools
+description: >-
+    Builds the forensic analysis host image for the Automated Forensics Orchestrator.
+    It installs exactly the tools the investigation SSM documents invoke on that host -
+    Docker (used to run log2timeline/plaso), a Volatility 3 supported Python interpreter,
+    git, jq, unzip, gzip, coreutils, the AWS CLI and the filesystem utilities needed to
+    mount an acquired volume. Volatility 3 itself is deliberately not baked in: the
+    lime-memory-load-investigation document provisions it at run time so an investigation
+    always runs a current framework against the captured image.
+schemaVersion: 1.0
+
+phases:
+    - name: build
+      steps:
+          - name: RequireAmazonLinux2023
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # The investigation documents call yum and systemctl. On a Debian
+                        # family parent those are no-ops, Docker never installs, and the plaso
+                        # runs fail while the document still exits 0 - a "successful"
+                        # investigation with no evidence. Refuse to build on anything else.
+                        . /etc/os-release
+                        echo "parent image reports ID=${ID:-unknown} VERSION_ID=${VERSION_ID:-unknown}"
+                        if [ "${ID:-}" != "amzn" ] || [ "${VERSION_ID:-}" != "2023" ]; then
+                            echo "FATAL: this component targets Amazon Linux 2023. The investigation SSM documents call yum and systemctl, which would fail silently on ${PRETTY_NAME:-this image}." >&2
+                            exit 1
+                        fi
+
+          - name: PatchBaseImage
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        dnf -y update
+
+          - name: InstallInvestigationTools
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # Exactly what the investigation documents invoke: git (clones
+                        # volatility3), jq (reads the head-object metadata), unzip, gzip,
+                        # tar, coreutils (sha256sum), p7zip/libarchive, python3-pip, awscli-2.
+                        # util-linux/e2fsprogs/xfsprogs/dosfstools because the analysis host
+                        # runs mkfs -t ext4 and mounts the acquired volume, and AL2023 roots
+                        # on xfs so ext4 tooling is absent unless asked for.
+                        dnf -y install \
+                            git \
+                            jq \
+                            unzip \
+                            gzip \
+                            tar \
+                            coreutils \
+                            util-linux \
+                            e2fsprogs \
+                            xfsprogs \
+                            dosfstools \
+                            p7zip \
+                            libarchive \
+                            python3-pip \
+                            awscli-2
+
+          - name: InstallVolatilitySupportedPython
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # Volatility 3 declares a 3.8 floor but upstream tests 3.10-3.13, and
+                        # the AL2023 system interpreter is 3.9, unpatched since October 2025.
+                        # Bake a supported one in so the load document finds it on PATH.
+                        # /usr/bin/python3 is deliberately NOT repointed: dnf is written
+                        # against the system interpreter and replacing it breaks dnf.
+                        selected=
+                        for candidate in python3.13 python3.12 python3.11; do
+                            if dnf -y install "${candidate}" "${candidate}-pip"; then
+                                selected="${candidate}"
+                                break
+                            fi
+                            echo "WARNING: ${candidate} is not available from the Amazon Linux 2023 repositories, trying the next candidate" >&2
+                        done
+                        if [ -z "${selected}" ]; then
+                            echo "FATAL: no interpreter in the range Volatility 3 supports could be installed. Shipping this AMI would silently degrade every memory investigation to the end of life system Python." >&2
+                            exit 1
+                        fi
+                        echo "selected interpreter ${selected} ($(${selected} --version 2>&1))"
+                        printf '%s\n' "${selected}" > /etc/forensic-analysis-python
+                        # volatility3's only runtime dependency, needed by the Windows
+                        # symbol path. Installed here so no PyPI round trip - which also
+                        # breaks under PEP 668 - lands on the incident path. Pinned so two
+                        # AMIs cannot parse the same image with different code; plaso is
+                        # pinned by digest and volatility3 by tag.
+                        PEFILE_VERSION=2024.8.26
+                        "${selected}" -m pip install --quiet "pefile==${PEFILE_VERSION}" || {
+                            echo "FATAL: cannot install pefile==${PEFILE_VERSION}" >&2
+                            exit 1
+                        }
+                        "${selected}" -c "import pefile, sys; sys.exit(0 if pefile.__version__ == '${PEFILE_VERSION}' else 1)" || {
+                            echo "FATAL: pefile missing or not ${PEFILE_VERSION} for ${selected}" >&2
+                            exit 1
+                        }
+
+          - name: InstallDocker
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # Docker comes from the Amazon Linux 2023 core repository, so no third
+                        # party repository has to be trusted at image build time. `systemctl
+                        # enable` is what makes the `sudo systemctl start docker` line in the
+                        # investigation documents a no-op rather than a first time start.
+                        dnf -y install docker
+                        systemctl enable docker
+                        systemctl start docker
+                        timeout 120 bash -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
+                        docker --version
+
+          - name: PrePullPlasoImage
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # Pulling at investigation time costs minutes on the critical path, needs
+                        # egress to a public registry from the analysis subnet, and is subject to
+                        # anonymous registry rate limits.
+                        #
+                        # Pinned by digest, not by tag: :latest resolves to whatever the registry
+                        # serves at build time, so two AMIs weeks apart carry different builds of
+                        # plaso and an examiner cannot say which produced a timeline. A digest
+                        # also cannot be repointed by whoever controls the tag. This is the image
+                        # published as tag 20260720; to move on, resolve the new digest with
+                        # `docker buildx imagetools inspect log2timeline/plaso:<tag>`.
+                        # The alias keeps `docker run log2timeline/plaso` in the investigation
+                        # documents resolving locally instead of pulling at run time.
+                        PLASO_IMAGE=log2timeline/plaso@sha256:a8d42e64dcd3af2dffed8ddb25d34f34def69b672eec97ea9af62885c9332950
+                        docker pull "${PLASO_IMAGE}"
+                        docker tag "${PLASO_IMAGE}" log2timeline/plaso:latest
+                        docker image inspect log2timeline/plaso:latest >/dev/null
+                        printf '%s\n' "${PLASO_IMAGE}" > /etc/forensic-analysis-plaso-image
+
+          - name: RecordToolManifest
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # Chain of custody: an examiner has to be able to state which build of
+                        # each tool produced an artefact. Record it on the image itself.
+                        manifest=/etc/forensic-analysis-tools-manifest.txt
+                        py=$(cat /etc/forensic-analysis-python)
+                        plaso=$(cat /etc/forensic-analysis-plaso-image)
+                        digest=$(docker image inspect "${plaso}" | jq -r '.[0].RepoDigests[0] // "unknown"')
+                        . /etc/os-release
+                        {
+                            echo "forensic analysis AMI tool manifest"
+                            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                            echo "os=${PRETTY_NAME}"
+                            echo "kernel=$(uname -r)"
+                            echo "python=${py} $(${py} --version 2>&1 | awk '{print $2}')"
+                            echo "system_python=$(python3 --version 2>&1 | awk '{print $2}')"
+                            echo "docker=$(docker --version)"
+                            echo "git=$(git --version)"
+                            echo "jq=$(jq --version)"
+                            echo "aws_cli=$(aws --version 2>&1)"
+                            echo "plaso_image=${plaso}"
+                            echo "plaso_digest=${digest}"
+                        } > "${manifest}"
+                        chmod 0444 "${manifest}"
+                        cat "${manifest}"
+
+          - name: Cleanup
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # Only package cache and shell history. Amazon Linux 2023 registers with
+                        # Systems Manager from the instance identity document, so the SSM agent
+                        # state is deliberately left alone - an analysis host that cannot
+                        # register is an investigation that cannot run at all.
+                        dnf clean all
+                        rm -rf /var/cache/dnf
+                        rm -f /root/.bash_history /home/ec2-user/.bash_history
+
+    - name: validate
+      steps:
+          - name: AssertToolsPresentOnBuildInstance
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        missing=0
+                        for tool in docker git jq unzip gzip tar sha256sum mount mkfs.ext4 pip3 aws; do
+                            if ! command -v "${tool}" >/dev/null 2>&1; then
+                                echo "MISSING: ${tool}" >&2
+                                missing=1
+                            fi
+                        done
+                        py=$(cat /etc/forensic-analysis-python)
+                        if ! command -v "${py}" >/dev/null 2>&1; then
+                            echo "MISSING: ${py}" >&2
+                            missing=1
+                        fi
+                        # volatility3's only runtime dependency. The Windows load
+                        # document aborts without it, and used to try to pip install
+                        # it mid incident.
+                        if ! "${py}" -c 'import pefile' >/dev/null 2>&1; then
+                            echo "MISSING: pefile for ${py}" >&2
+                            missing=1
+                        fi
+                        if [ "${missing}" -ne 0 ]; then
+                            echo "FATAL: the investigation documents would fail on this image." >&2
+                            exit 1
+                        fi
+                        echo "all required tools present"
+
+    - name: test
+      steps:
+          - name: AssertToolsPresentOnBuiltAmi
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # Runs on an instance launched from the finished AMI, so this is what
+                        # actually proves the image an investigation will boot is usable.
+                        missing=0
+                        for tool in docker git jq unzip gzip tar sha256sum mount mkfs.ext4 pip3 aws; do
+                            if ! command -v "${tool}" >/dev/null 2>&1; then
+                                echo "MISSING: ${tool}" >&2
+                                missing=1
+                            fi
+                        done
+                        if [ ! -s /etc/forensic-analysis-tools-manifest.txt ]; then
+                            echo "MISSING: tool manifest" >&2
+                            missing=1
+                        fi
+                        if [ "${missing}" -ne 0 ]; then
+                            exit 1
+                        fi
+                        cat /etc/forensic-analysis-tools-manifest.txt
+
+          - name: AssertPythonMeetsVolatility3Floor
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        py=$(cat /etc/forensic-analysis-python)
+                        # Mirrors the interpreter selection in lime-memory-load-investigation: if
+                        # that document cannot find a 3.10 or newer interpreter on PATH it warns
+                        # and falls back to the end of life system Python. Fail the build instead.
+                        "${py}" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'
+                        # volatility3's only runtime dependency, asserted on the finished
+                        # AMI so the Windows symbol path cannot fail mid incident.
+                        "${py}" -c 'import pefile'
+                        echo "volatility3 supported interpreter: ${py} ($(${py} --version 2>&1))"
+
+          - name: AssertDockerRunsPlasoOffline
+            action: ExecuteBash
+            inputs:
+                commands:
+                    - |
+                        set -euo pipefail
+                        # The disk and memory investigation documents both run
+                        # `sudo systemctl start docker` then `sudo docker run log2timeline/plaso`.
+                        # Prove that exact path works from the local image store on the finished
+                        # AMI rather than discovering it during an incident.
+                        systemctl start docker
+                        timeout 120 bash -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
+                        docker run --rm log2timeline/plaso log2timeline --version
+                        docker run --rm log2timeline/plaso psort --version

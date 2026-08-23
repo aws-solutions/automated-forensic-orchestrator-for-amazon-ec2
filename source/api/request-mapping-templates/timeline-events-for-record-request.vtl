@@ -5,18 +5,18 @@
       "expression": "#PK = :PK and begins_with(#SK, :SK)",
       "expressionNames": {
         "#PK": "PK",
-        "#SK": "SK",
+        "#SK": "SK"
       },
       "expressionValues" : {
         ":PK": $util.dynamodb.toDynamoDBJson("RECORD#${ctx.args.input.id}"),
-        ":SK": $util.dynamodb.toDynamoDBJson("EVENT#"),        
-      },
-      #if( ${ctx.args.limit} )
-        ,"limit": $util.toJson($context.arguments.limit)
-    	#end
-      #if( ${ctx.args.nextToken} )
-        ,"nextToken": $util.toJson($context.arguments.nextToken)
-      #end
+        ":SK": $util.dynamodb.toDynamoDBJson("EVENT#")
+      }
     },
     "scanIndexForward" : true
+    #if( $ctx.args.input.limit )
+    ,"limit": $util.toJson($ctx.args.input.limit)
+    #end
+    #if( $ctx.args.input.nextToken )
+    ,"nextToken": $util.toJson($ctx.args.input.nextToken)
+    #end
 }

@@ -29,6 +29,7 @@ import {
     FORENSIC_BUCKET_COMPLIANCE_MODE,
     FORENSIC_BUCKET_RETENTION_DAYS,
     FORENSIC_BUCKET_ACCESS_IAM_ROLES_NAMES,
+    SSM_OUTPUT_LOG_GROUP_PREFIX,
 } from '../lib/infra-utils/infra-types';
 import { AuthorizationType } from '../lib/infra-utils/aws-appsync-api';
 
@@ -50,7 +51,7 @@ test('Forensics Solutions snapshot test', () => {
             vol2ProfilesBucket: '',
             ssmExecutionTimeout: '1800',
             diskSize: '512',
-            forensicImageName: 'sansift',
+            forensicImageName: 'forensic-analysis-ami',
             appForensicAliasKMS: 'forensickey',
             applicationAccounts: ['*'],
             customerManagedCMKArns: {},
@@ -68,19 +69,16 @@ test('Forensics Solutions snapshot test', () => {
             },
             imageBuilderPipelines: [
                 {
-                    name: 'sansift',
+                    name: 'forensic-analysis',
                     dir: './image-builder-components',
-                    instanceProfileName: 'ImageBuilderInstanceProfile',
-                    cfnImageRecipeName: 'sansift-image01',
-                    version: '1.0.2',
-                    parentImage: {
-                        'ap-southeast-2': { amiID: 'ami-0b7dcd6e6fd797935' },
-                        'ap-southeast-1': { amiID: 'ami-055d15d9cfddf7bd3' },
-                        'us-east-1': { amiID: 'ami-04505e74c0741db8d' },
-                        'us-east-2': { amiID: 'ami-0fb653ca2d3203ac1' },
-                        'us-west-1': { amiID: 'ami-01f87c43e618bf8f0' },
-                        'us-west-2': { amiID: 'ami-0892d3c7ee96c0bf7' },
-                    },
+                    cfnImageRecipeName: 'forensic-analysis-al2023',
+                    version: '1.0.0',
+                    parentImageSsmParameter:
+                        '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64',
+                    instanceTypes: ['t3.large', 't3.xlarge'],
+                    rootVolumeSizeGiB: 30,
+                    buildSchedule: 'cron(0 8 1 * ? *)',
+                    buildOnDeploy: true,
                 },
             ],
             vpcInfo: {
@@ -165,5 +163,31 @@ test('Forensics Solutions snapshot test', () => {
         Runtime: runtimeCapture,
     });
 
-    expect(runtimeCapture.asString()).toEqual('python3.9');
+    expect(runtimeCapture.asString()).toEqual('python3.12');
+
+    /*
+     * The instance role must be able to create the log group the SSM agent is
+     * told to archive command output to. AmazonSSMManagedInstanceCore carries
+     * no CloudWatch Logs write permissions, so without this statement the
+     * agent is denied, no log group is ever created, and the only record of a
+     * command is SSM's own 24 KB-truncated output - which volatility3's
+     * progress output alone overflows. Every memory investigation that failed
+     * lost its diagnostic that way.
+     */
+    const policies = template.findResources('AWS::IAM::Policy');
+    const grantsLogWrites = Object.values(policies).some((policy) => {
+        const statements = policy.Properties?.PolicyDocument?.Statement ?? [];
+        return statements.some((statement: { Action?: string | string[]; Resource?: unknown }) => {
+            const actions = ([] as string[]).concat(statement.Action ?? []);
+            const resources = JSON.stringify(statement.Resource ?? '');
+            return (
+                actions.includes('logs:CreateLogGroup') &&
+                actions.includes('logs:CreateLogStream') &&
+                actions.includes('logs:PutLogEvents') &&
+                resources.includes(SSM_OUTPUT_LOG_GROUP_PREFIX)
+            );
+        });
+    });
+
+    expect(grantsLogWrites).toBe(true);
 });

@@ -151,6 +151,29 @@ def handler(event, context):
 
             output_body["appAccount"] = app_account_id
             output_body["isSnapshotShared"] = True
+        else:
+            # Same-account deployment: the snapshot is already visible to the
+            # forensic account because it *is* the application account, so there
+            # is nothing to share and no ModifySnapshotAttribute to make.
+            #
+            # The flag still has to be set. Downstream it is a phase marker, not
+            # a record of an API call: performCopySnapshot and
+            # checkCopySnapShotStatus both branch on it to decide whether they
+            # are working in the application account or the forensic one, and
+            # the "Is Copy SnapShot Complete" choice reads
+            # $.Payload.body.isSnapShotCopyComplete, which the checker only
+            # writes on the sharing-complete branch. Leaving it False made every
+            # single-account disk acquisition fail at that choice with
+            # States.Runtime "invalid path", after the snapshot had already been
+            # taken and copied.
+            output_body["appAccount"] = app_account_id
+            output_body["isSnapshotShared"] = True
+            if "clusterInfo" in input_body:
+                for instance_id in input_body.get("clusterInfo").get(
+                    "affectedNode"
+                ):
+                    if isinstance(output_body.get(instance_id), dict):
+                        output_body[instance_id]["isSnapshotShared"] = True
 
     except Exception as e:
         logger.error(e)

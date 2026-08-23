@@ -40,7 +40,6 @@ export interface DiskAcquisitionConstructProps {
     sendErrorNotificationLambda: IFunction;
     diskAcquisitionLogGroup: ILogGroup;
     performDiskAcquisitionSetupLambda: IFunction;
-    performInstanceIsolationLambda: IFunction;
     performInstanceSnapShotLambda: IFunction;
     snapShotCompletionCheckerLambda: IFunction;
     shareSnapShotLambda: IFunction;

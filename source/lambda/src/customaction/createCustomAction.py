@@ -17,6 +17,7 @@
 
 import json
 import os
+import time
 
 import boto3
 import requests
@@ -26,9 +27,19 @@ from botocore.exceptions import ClientError
 from ..common.awsapi_cached_client import AWSCachedClient
 from ..common.common import create_response
 from ..common.log import get_logger
+from ..common.redact import redact
 
 # initialise loggers
 logger = get_logger(__name__)
+
+# This function is the only way a custom resource in this solution can report
+# its outcome, so a failed presigned PUT used to leave the stack sitting in
+# CREATE_IN_PROGRESS for the full one hour custom resource timeout. The PUT is
+# retried instead, and a PUT that still cannot be delivered is logged rather
+# than raised: propagating it only replaces a slow failure with an unsignalled
+# one, because there is no second response to send.
+CFN_RESPONSE_ATTEMPTS = 3
+CFN_RESPONSE_BACKOFF_SECONDS = 2
 
 
 @xray_recorder.capture("send_status_to_cfn")
@@ -75,26 +86,43 @@ def send_status_to_cfn(
         "content-length": str(len(json_response_body)),
     }
 
-    try:
-        if response_url == "https://pre-signed-S3-url-for-response":
-            logger.info(
-                "CloudFormation returned status code: THIS IS A TEST OUTSIDE OF CLOUDFORMATION"
-            )
-        else:
+    if response_url == "https://pre-signed-S3-url-for-response":
+        logger.info(
+            "CloudFormation returned status code: THIS IS A TEST OUTSIDE OF CLOUDFORMATION"
+        )
+        return create_response(200, "send Status successful")
+
+    for attempt in range(1, CFN_RESPONSE_ATTEMPTS + 1):
+        try:
             response = requests.put(
                 response_url,
                 data=json_response_body,
                 headers=headers,
                 timeout=10,
             )
-            logger.info(response)
-            if "reason" in response:
-                logger.info(f"CloudFormation returned status code: {response}")
+        except Exception as e:
+            logger.error(
+                "send(..) failed executing requests.put(..) on attempt "
+                f"{attempt} of {CFN_RESPONSE_ATTEMPTS}: {e}"
+            )
+            if attempt < CFN_RESPONSE_ATTEMPTS:
+                time.sleep(CFN_RESPONSE_BACKOFF_SECONDS * attempt)
+            continue
+        # A completed PUT is the signal, whatever CloudFormation makes of it, so
+        # the response status is only logged. The reason is NOT that the
+        # presigned URL has been consumed - an S3 presigned PUT stays usable
+        # until it expires, and re-PUTting an identical body is a harmless
+        # overwrite. It is that CloudFormation acts on the first response it
+        # receives, so a second PUT can only muddy an outcome already acted on.
+        logger.info(f"CloudFormation returned status code: {response}")
+        return create_response(200, "send Status successful")
 
-    except Exception as e:
-        logger.error("send(..) failed executing requests.put(..): " + str(e))
-        raise
-    return create_response(200, "send Status successful")
+    logger.error(
+        "send(..) could not deliver the CloudFormation response after "
+        f"{CFN_RESPONSE_ATTEMPTS} attempts; the stack will wait for the "
+        "custom resource timeout"
+    )
+    return create_response(500, "send Status failed")
 
 
 @xray_recorder.capture("Create SecurityHub Action")
@@ -107,7 +135,7 @@ def lambda_handler(event, context):
     physical_resource_id = ""
 
     try:
-        logger.info(event)
+        logger.info("event %s", redact(event))
         properties = event["ResourceProperties"]
         logger.debug(json.dumps(properties))
         region = os.environ["AWS_REGION"]
@@ -161,6 +189,14 @@ def lambda_handler(event, context):
                 logger,
                 reason=err_msg,
             )
+            # Return rather than falling through to the SUCCESS signal below.
+            # CloudFormation takes the first response it receives, so sending
+            # FAILED and then SUCCESS is not merely untidy: which one wins is a
+            # race. Previously a failing PUT re-raised out of send_status_to_cfn
+            # and was the only thing preventing the fall-through; now that the
+            # delivery is retried and its failure swallowed, SUCCESS was always
+            # attempted afterwards.
+            return create_response(500, err_msg)
 
         send_status_to_cfn(
             event,

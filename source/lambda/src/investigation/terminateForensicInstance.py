@@ -22,6 +22,7 @@ from ..common.awsapi_cached_client import AWSCachedClient, create_aws_client
 from ..common.common import clean_date_format, create_response
 from ..common.exception import InvestigationError
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.datatypes import ForensicsProcessingPhase
 from ..data.service import ForensicDataService
 
@@ -31,7 +32,7 @@ logger = get_logger(__name__)
 
 @xray_recorder.capture("Terminate Forensic Instance")
 def handler(event, _):
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
     table_name = os.environ["INSTANCE_TABLE_NAME"]
 
     fds = ForensicDataService(
