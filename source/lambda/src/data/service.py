@@ -19,7 +19,7 @@ import json
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from aws_xray_sdk.core import xray_recorder
@@ -139,8 +139,8 @@ class ForensicDataService(ForensicDynamoDBService):
         resource_id: str,
         aws_account_id: str,
         aws_region: str,
-        resource_info: dict = None,
-        associated_findings: List[Finding] = None,
+        resource_info: Optional[dict] = None,
+        associated_findings: Optional[List[Finding]] = None,
     ) -> ForensicRecord:
         record_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -250,9 +250,9 @@ class ForensicDataService(ForensicDynamoDBService):
     def update_forensic_record_phase_status(
         self,
         id: str,
-        triage: Tuple[ForensicsProcessingPhase, str] = None,
-        memory: Tuple[ForensicsProcessingPhase, str] = None,
-        disk: Tuple[ForensicsProcessingPhase, str] = None,
+        triage: Optional[Tuple[ForensicsProcessingPhase, str]] = None,
+        memory: Optional[Tuple[ForensicsProcessingPhase, str]] = None,
+        disk: Optional[Tuple[ForensicsProcessingPhase, str]] = None,
     ) -> ForensicRecord:
         now = datetime.now(timezone.utc).isoformat()
 
@@ -340,8 +340,8 @@ class ForensicDataService(ForensicDynamoDBService):
         phase: ForensicsProcessingPhase,
         component_id: str,
         component_type: str,
-        artifact: ForensicArtifact = None,
-        event_data: dict = None,
+        artifact: Optional[ForensicArtifact] = None,
+        event_data: Optional[dict] = None,
     ) -> ForensicTimelineEvent:
 
         event_id = str(uuid.uuid4())
@@ -391,17 +391,17 @@ class ForensicDataService(ForensicDynamoDBService):
         status: ArtifactStatus,
         component_id: str,
         component_type: str,
-        source_account_snapshot: Snapshot = None,
-        forensic_account_snapshot: Snapshot = None,
-        forensic_account_volume: Volume = None,
-        input_artifact_category: ArtifactCategory = None,
-        input_artifact_type: ArtifactType = None,
-        input_artifact_id: str = None,
-        ssm_document_name: str = None,
-        ssm_command_id: str = None,
-        artifact_location: str = None,
-        artifact_size: int = None,
-        artifact_SHA256: str = None,
+        source_account_snapshot: Optional[Snapshot] = None,
+        forensic_account_snapshot: Optional[Snapshot] = None,
+        forensic_account_volume: Optional[Volume] = None,
+        input_artifact_category: Optional[ArtifactCategory] = None,
+        input_artifact_type: Optional[ArtifactType] = None,
+        input_artifact_id: Optional[str] = None,
+        ssm_document_name: Optional[str] = None,
+        ssm_command_id: Optional[str] = None,
+        artifact_location: Optional[str] = None,
+        artifact_size: Optional[int] = None,
+        artifact_SHA256: Optional[str] = None,
     ) -> str:
 
         artifact_id = str(uuid.uuid4())
@@ -563,10 +563,10 @@ class ForensicDataService(ForensicDynamoDBService):
         phase: ForensicsProcessingPhase,
         component_id: str,
         component_type: str,
-        status: ArtifactStatus = None,
-        artifact_location: str = None,
-        artifact_size: int = None,
-        artifact_SHA256: str = None,
+        status: Optional[ArtifactStatus] = None,
+        artifact_location: Optional[str] = None,
+        artifact_size: Optional[int] = None,
+        artifact_SHA256: Optional[str] = None,
     ) -> bool:
 
         event_id = str(uuid.uuid4())

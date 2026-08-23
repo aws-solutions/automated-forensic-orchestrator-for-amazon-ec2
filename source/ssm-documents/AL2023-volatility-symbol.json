@@ -1,0 +1,120 @@
+{
+    "schemaVersion": "2.2",
+    "description": "Run a script on Amazon Linux 2023 instances to create symbol details for volatility 3",
+    "parameters": {
+        "s3bucket": {
+            "type": "String",
+            "description": "(Required) S3 bucket details.",
+            "default": "S3 Bucket Name"
+        },
+        "AccessKeyId": {
+            "type": "String",
+            "description": "(Required) AccesskeyID to store evidence details in S3.",
+            "default": "Access key ID"
+        },
+        "SecretAccessKey": {
+            "type": "String",
+            "description": "(Required) SecretAccessKey to store evidence details in S3",
+            "default": "secret access key"
+        },
+        "SessionToken": {
+            "type": "String",
+            "description": "(Required) SessionToken to store evidence details in S3.",
+            "default": "session Token"
+        },
+        "Region": {
+            "type": "String",
+            "description": "(Required) Region details",
+            "default": "ap-southeast-2"
+        },
+        "ExecutionTimeout": {
+            "type": "String",
+            "description": "(Required) SSM document execution timeout (seconds)",
+            "default": "4000"
+        }
+    },
+    "mainSteps": [
+        {
+            "action": "aws:runShellScript",
+            "name": "runCommands",
+            "precondition": {
+                "StringEquals": [
+                    "platformType",
+                    "Linux"
+                ]
+            },
+            "inputs": {
+                "timeoutSeconds": "{{ExecutionTimeout}}",
+                "runCommand": [
+                    "#!/bin/bash",
+                    "# Amazon Linux 2023 kernel symbol table builder for Volatility 3.",
+                    "# Unlike the Amazon Linux 2 document this fails loudly: a silently missing",
+                    "# symbol table makes every later memory investigation return zero rows.",
+                    "# Upstream versions, pinned. An unpinned clone builds whatever is at the tip of",
+                    "# the default branch on the day of the incident - into the tooling that produces",
+                    "# and reads forensic evidence. These match the pins already used by the",
+                    "# acquisition and investigation documents so that one release means one set of",
+                    "# tool versions. Note 504ensicsLabs/LiME redirects to jtsylve/LiME, its original",
+                    "# author; cloning the old path works only while GitHub honours that redirect.",
+                    "DWARF2JSON_REF=v0.9.0",
+                    "set -o pipefail",
+                    "fail() { echo \"SYMBOL_BUILD_FAILED: $1\" >&2; exit 1; }",
+                    "kernel_name=$(uname -s)",
+                    "kernel_release=$(uname -r)",
+                    "# AL2023 names kernel sub-packages per kernel line (kernel6.18-devel) from 6.12",
+                    "# onwards, but keeps the unversioned name (kernel-devel) on the 6.1 line.",
+                    "kernel_line=$(uname -r | cut -d. -f1,2)",
+                    "echo \"building volatility3 symbols for ${kernel_name}-${kernel_release} (line ${kernel_line})\"",
+                    "grep -q 'platform:al2023' /etc/os-release || fail \"not an Amazon Linux 2023 instance: $(. /etc/os-release; echo $PRETTY_NAME)\"",
+                    "# /tmp is a RAM-backed tmpfs on AL2023 capped at ~50% of memory; the debuginfo",
+                    "# package and the generated ISF JSON do not reliably fit there.",
+                    "workdir=/var/tmp/forensic-symbol-builder",
+                    "sudo rm -rf $workdir && mkdir -p $workdir && cd $workdir || fail 'cannot create work directory'",
+                    "sudo dnf install -y -q git golang || fail 'unable to install git/golang'",
+                    "sudo dnf groupinstall -y -q 'Development Tools' || sudo dnf install -y -q gcc make || fail 'unable to install build tools'",
+                    "install_kernel_pkg() {",
+                    "    # $1 = suffix (devel|debuginfo); try the versioned name then the legacy name",
+                    "    sudo dnf --enablerepo='*debuginfo' install -y -q \"kernel${kernel_line}-$1-${kernel_release}\" >/dev/null 2>&1 && { echo \"installed kernel${kernel_line}-$1-${kernel_release}\"; return 0; }",
+                    "    sudo dnf --enablerepo='*debuginfo' install -y -q \"kernel-$1-${kernel_release}\" >/dev/null 2>&1 && { echo \"installed kernel-$1-${kernel_release}\"; return 0; }",
+                    "    return 1",
+                    "}",
+                    "install_kernel_pkg devel || fail \"no kernel-devel package for ${kernel_release}\"",
+                    "install_kernel_pkg debuginfo || fail \"no kernel-debuginfo package for ${kernel_release}; the amazonlinux-debuginfo repo may not yet carry this kernel build\"",
+                    "vmlinux=/usr/lib/debug/lib/modules/${kernel_release}/vmlinux",
+                    "test -f $vmlinux || vmlinux=/usr/lib/debug/usr/lib/modules/${kernel_release}/vmlinux",
+                    "test -f $vmlinux || fail \"debug vmlinux not found for ${kernel_release}\"",
+                    "systemmap=/boot/System.map-${kernel_release}",
+                    "test -f $systemmap || fail \"System.map not found for ${kernel_release}\"",
+                    "cd $workdir",
+                    "git clone --depth 1 --branch \"$DWARF2JSON_REF\" https://github.com/volatilityfoundation/dwarf2json.git || fail \"dwarf2json clone of $DWARF2JSON_REF failed\"",
+                    "cd dwarf2json",
+                    "sudo env PATH=$PATH HOME=/root go build || fail 'dwarf2json build failed'",
+                    "echo 'dwarf2json build done'",
+                    "# Name the ISF file <uname -s>-<uname -r>.json so that the memory load",
+                    "# investigation document finds it from the capture's S3 object metadata.",
+                    "symbol_file=${kernel_name}-${kernel_release}.json",
+                    "./dwarf2json linux --system-map $systemmap --elf $vmlinux > $workdir/$symbol_file || fail 'dwarf2json symbol generation failed'",
+                    "# Shape is not content: a dwarf2json run that was killed part way through",
+                    "# leaves a file of about 134 bytes whose maps are all empty, and that passes an",
+                    "# 'is the key present' test while making every later plugin return zero rows.",
+                    "# Require populated maps plus what volatility3 actually reads:",
+                    "# symbols.linux_banner.constant_data, which is the only thing automagic can",
+                    "# match an ISF to a capture with (see framework/automagic/symbol_cache.py),",
+                    "# init_task to walk processes, and the task_struct definition. The path goes in",
+                    "# through argv rather than through the program text.",
+                    "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); s=d.get(\"symbols\") or {}; b=d.get(\"base_types\") or {}; u=d.get(\"user_types\") or {}; banner=(s.get(\"linux_banner\") or {}).get(\"constant_data\"); sys.exit(0 if (s and b and u and banner and \"init_task\" in s and \"task_struct\" in u) else 1)' \"$workdir/$symbol_file\" || fail 'the generated symbol table is not a usable volatility3 ISF file'",
+                    "echo \"symbol build done: $(ls -lh $workdir/$symbol_file | awk '{print $5}')\"",
+                    "export AWS_ACCESS_KEY_ID={{AccessKeyId}}",
+                    "export AWS_SECRET_ACCESS_KEY={{SecretAccessKey}}",
+                    "export AWS_SESSION_TOKEN={{SessionToken}}",
+                    "export AWS_DEFAULT_REGION={{Region}}",
+                    "aws configure set default.s3.max_concurrent_requests 20",
+                    "aws s3 cp $workdir/$symbol_file s3://{{s3bucket}}/volatility3/symbols/$symbol_file --acl bucket-owner-full-control || fail 's3 upload of symbol table failed'",
+                    "echo \"s3 copy complete: s3://{{s3bucket}}/volatility3/symbols/$symbol_file\"",
+                    "sudo rm -rf $workdir",
+                    "exit 0;"
+                ]
+            }
+        }
+    ]
+}

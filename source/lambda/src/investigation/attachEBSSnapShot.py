@@ -15,7 +15,6 @@
 ###############################################################################
 
 import os
-import re
 import time
 
 from aws_xray_sdk.core import xray_recorder
@@ -24,6 +23,7 @@ from ..common.awsapi_cached_client import create_aws_client
 from ..common.common import create_response
 from ..common.exception import InvestigationError
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.datatypes import (
     ArtifactCategory,
     ArtifactStatus,
@@ -41,7 +41,7 @@ def handler(event, context):
     """
     Lambda function handler for Attaching EBS SnapShot
     """
-    logger.info(f"process event {event}")
+    logger.info("process event %s", redact(event))
     current_account = context.invoked_function_arn.split(":")[4]
     ec2_client = create_aws_client("ec2")
     ssmclient = create_aws_client("ssm")
@@ -222,11 +222,16 @@ def attach_volume(
             },
         )
 
-        volume_suffix = re.search(
-            "/dev/(.+)", attached_device, re.IGNORECASE
-        ).group(1)[-1]
         # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/device_naming.html
-        instance_attached_device = "/dev/xvd" + volume_suffix + "1"
+        # This used to build "/dev/xvd<suffix>1". EC2 only honours the requested
+        # name on the Xen instance families; every current generation analysis
+        # instance is Nitro, where the kernel names EBS volumes /dev/nvmeXnY and
+        # udev links the requested /dev/sd<suffix> to it but never creates
+        # /dev/xvd<suffix>. So the mount targeted a device that could not exist
+        # and the whole disk investigation path stopped at the mount. Pass the
+        # requested name as a hint and the volume id as the identifier that is
+        # stable on both, and let the SSM document resolve the real partition.
+        instance_attached_device = attached_device + "1"
         mounting_point = "/data" + instance_attached_device
         logger.info(
             f"waiting for volume {attached_volume_id} to become available"
@@ -244,6 +249,7 @@ def attach_volume(
             Parameters={
                 "targetFolder": [mounting_point],
                 "volumeDeviceName": [instance_attached_device],
+                "volumeId": [attached_volume_id],
             },
         )
         info["instanceVolumeMountingPoint"] = mounting_point

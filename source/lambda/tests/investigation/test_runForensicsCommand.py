@@ -416,6 +416,22 @@ def mock_connection(ec_response):
     mockClient.get_item = get_item_fn
     mockClient.assume_role = assume_role_fn
     mockClient.describe_instance_information = describe_instance_information_fn
+    # The managed-node lookup filters and paginates now, because
+    # DescribeInstanceInformation returns 10 nodes by default and 50 at most. The
+    # paginator serves whatever describe_instance_information_fn was set to, so
+    # each test still controls the answer the same way.
+    def get_paginator(operation_name):
+        assert operation_name == "describe_instance_information", (
+            "unexpected SSM paginator " + operation_name
+        )
+        paginator = MagicMock()
+        paginator.paginate.side_effect = lambda **kwargs: [
+            describe_instance_information_fn()
+        ]
+        return paginator
+
+    mockClient.get_paginator = get_paginator
+
     mockClient.send_command = send_command_fn
     mockClient.update_item = update_item_fn
     mockClient.get_item = get_item_fn
@@ -467,3 +483,44 @@ def test_error_flowtrigger_event():
         ret = function_under_test(event, "")
         assert execinfo.type == Exception
         update_item_fn.assert_called()
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "S3_BUCKET_NAME": "BUCKET_FORENSICS",
+        "S3_COPY_ROLE": "arn:s3copRole",
+        "LINUX_DISK_INVESTIGATION": "documentName",
+        "WINDOWS_DISK_INVESTIGATION": "win_doc",
+    },
+)
+def test_an_unreachable_analysis_host_fails_rather_than_reporting_success():
+    """A registered but offline analysis instance must not pass silently.
+
+    This used to fall past `if is_ssm_installed:` and return 200 with no
+    ssmCommandList, so a disk investigation that sent no commands at all reported
+    success - and the missing evidence surfaced later, on another host, possibly
+    after the target instance was gone. An offline node is the realistic shape of
+    this: it is in the inventory, so it is "found", but it cannot run anything.
+    """
+    setup_postive_mocks()
+    describe_instance_information_fn.return_value = {
+        "InstanceInformationList": [
+            {
+                "InstanceId": "i-0b3daeccbc7e52246",
+                "PingStatus": "ConnectionLost",
+            }
+        ]
+    }
+    with patch.object(
+        AWSCachedClient,
+        "get_connection",
+        Mock(return_value=mock_connection({})),
+    ):
+        with pytest.raises(Exception) as caught:
+            function_under_test(event, "")
+    assert "not registered with Systems Manager or is not Online" in str(
+        caught.value
+    ) or "Online" in str(caught.value)

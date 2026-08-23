@@ -25,6 +25,30 @@ patch_all()
 xray_recorder.configure(context_missing="LOG_ERROR")
 
 
+# Every SSM command this solution sends asks the agent to archive its output to
+# CloudWatch Logs, because SSM itself only keeps the first 24 KB of stdout and
+# stderr and volatility3's progress output alone exceeds that - so when a memory
+# investigation fails, the part that says why is usually the part that was
+# truncated away.
+#
+# The log group used to be named after the forensic id alone, which produced
+# bare-UUID log groups that are unfindable in the console and impossible to
+# scope an IAM policy to. Prefixing them means the instance roles can be granted
+# logs:CreateLogGroup/CreateLogStream/PutLogEvents on this prefix and nothing
+# else. Without that grant no log group is ever created and the archiving is
+# silently a no-op, which is how it behaved until now.
+SSM_OUTPUT_LOG_GROUP_PREFIX = "/aws/ssm/forensic-orchestrator"
+
+
+def ssm_output_log_group(name: str) -> str:
+    """CloudWatch log group for an SSM command's archived output.
+
+    ``name`` is normally the forensic id, so one investigation's commands are
+    grouped together.
+    """
+    return f"{SSM_OUTPUT_LOG_GROUP_PREFIX}/{name}"
+
+
 def to_ddb_dict(pkg):
     t = TypeSerializer()
     return t.serialize(pkg)

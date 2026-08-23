@@ -42,7 +42,7 @@ test('SecurityHub Solutions snapshot test', () => {
             vol2ProfilesBucket: '',
             ssmExecutionTimeout: '1800',
             diskSize: '512',
-            forensicImageName: 'sansift',
+            forensicImageName: 'forensic-analysis-ami',
             appForensicAliasKMS: 'forensickey',
             applicationAccounts: ['*'],
             customerManagedCMKArns: {},
@@ -60,19 +60,16 @@ test('SecurityHub Solutions snapshot test', () => {
             },
             imageBuilderPipelines: [
                 {
-                    name: 'sansift',
+                    name: 'forensic-analysis',
                     dir: './image-builder-components',
-                    instanceProfileName: 'ImageBuilderInstanceProfile',
-                    cfnImageRecipeName: 'sansift-image01',
-                    version: '1.0.2',
-                    parentImage: {
-                        'ap-southeast-2': { amiID: 'ami-0b7dcd6e6fd797935' },
-                        'ap-southeast-1': { amiID: 'ami-055d15d9cfddf7bd3' },
-                        'us-east-1': { amiID: 'ami-04505e74c0741db8d' },
-                        'us-east-2': { amiID: 'ami-0fb653ca2d3203ac1' },
-                        'us-west-1': { amiID: 'ami-01f87c43e618bf8f0' },
-                        'us-west-2': { amiID: 'ami-0892d3c7ee96c0bf7' },
-                    },
+                    cfnImageRecipeName: 'forensic-analysis-al2023',
+                    version: '1.0.0',
+                    parentImageSsmParameter:
+                        '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64',
+                    instanceTypes: ['t3.large', 't3.xlarge'],
+                    rootVolumeSizeGiB: 30,
+                    buildSchedule: 'cron(0 8 1 * ? *)',
+                    buildOnDeploy: true,
                 },
             ],
             vpcInfo: {
@@ -141,5 +138,5 @@ test('SecurityHub Solutions snapshot test', () => {
         Runtime: runtimeCapture,
     });
 
-    expect(runtimeCapture.asString()).toEqual('python3.9');
+    expect(runtimeCapture.asString()).toEqual('python3.12');
 });

@@ -68,15 +68,37 @@ class ForensicDynamoDBService:
         return result
 
     def _query(self, type_prefix, id, check_metadata_item=True):
-        response = self.client.query(
-            TableName=self.table,
-            KeyConditionExpression="PK = :PK",
-            ExpressionAttributeValues={
-                ":PK": {"S": f"{type_prefix}{id}"},
-            },
-        )
+        # Paginated. A DynamoDB Query returns at most 1 MB of items and sets
+        # LastEvaluatedKey; reading one response silently truncated the record.
+        #
+        # That truncation was not a cosmetic loss of trailing timeline events.
+        # Items under one PK come back sorted by SK, and the sort keys here are
+        # ARTIFACT#, EVENT# and RECORD# - so the RECORD# metadata item, the one
+        # _get_metadata_query_item looks for, sorts *last* and is the first thing
+        # to fall off the page. Several timeline events store a whole API
+        # response as their event data, tens of kilobytes each, so a case with a
+        # rich timeline reached 1 MB easily and then raised
+        # DoesNotExistException - "does not exist or has been deleted" - about a
+        # live forensic record.
+        items = []
+        last_evaluated_key = None
+        while True:
+            request = {
+                "TableName": self.table,
+                "KeyConditionExpression": "PK = :PK",
+                "ExpressionAttributeValues": {
+                    ":PK": {"S": f"{type_prefix}{id}"},
+                },
+            }
+            if last_evaluated_key:
+                request["ExclusiveStartKey"] = last_evaluated_key
+            response = self.client.query(**request)
+            items.extend(response.get("Items", []))
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            if not last_evaluated_key:
+                break
 
-        result = [self.deserialize(item) for item in response.get("Items", [])]
+        result = [self.deserialize(item) for item in items]
 
         # Make sure that top-level item exists
         if (

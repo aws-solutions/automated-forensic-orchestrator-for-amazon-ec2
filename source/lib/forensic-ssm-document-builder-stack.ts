@@ -22,7 +22,7 @@ import {
 import { Construct } from 'constructs';
 import { CfnDocument } from 'aws-cdk-lib/aws-ssm';
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface AwsForensicsSSMDBuilderConstructProps {}
 
 /**
@@ -60,6 +60,19 @@ export class ForensicSSMDBuilderConstruct extends Construct {
                     documentFormat: 'JSON',
                     content: JSON.parse(this.getData(SSMDocumentsDir, fileName)),
                     documentType: 'Command',
+                    // CloudFormation defaults Content updates to UpdateMethod: Replace,
+                    // which is DeleteDocument followed by CreateDocument. Two of these
+                    // documents are shared with the application account at run time by
+                    // performMemoryAcquisition, and the un-share only runs on the success
+                    // branch of checkMemoryAcquisition, so a failed or timed out
+                    // acquisition leaves the share in place. SSM then refuses the delete
+                    // with "InvalidDocumentOperation - You attempted to delete a document
+                    // while it is still shared", which rolls the whole stack update back
+                    // and leaves the solution without forensic capability until an
+                    // operator un-shares by hand. NewVersion adds a version and promotes
+                    // it to default instead, so no delete is attempted and the physical
+                    // document name every lambda holds in its environment survives.
+                    updateMethod: 'NewVersion',
                 });
                 this.lambdaEnvironmentProps[name.replace(HYPHEN, '_').toUpperCase()] =
                     ssmConstruct.ref;

@@ -1,11 +1,11 @@
 {
     "version" : "2017-02-28",
     "operation" : "Scan",
-    "index" : "GSI1",
-    #if( ${context.arguments.limit} )
-        ,"limit": $util.toJson($context.arguments.limit)
+    "index" : "GSI1"
+    #if( $ctx.args.input.limit )
+    ,"limit": $util.toJson($ctx.args.input.limit)
     #end
-    #if( ${context.arguments.nextToken} )
-        ,"nextToken": $util.toJson($context.arguments.nextToken)
+    #if( $ctx.args.input.nextToken )
+    ,"nextToken": $util.toJson($ctx.args.input.nextToken)
     #end
 }

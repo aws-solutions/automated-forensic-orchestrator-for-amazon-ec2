@@ -25,21 +25,29 @@ logger = get_logger(__name__)
 @xray_recorder.capture("resolve_artifact_metadata")
 def resolve_artifact_metadata(s3_client, s3_bucket_name, prefix):
     # artifact_locaton, artifact_size, sha256
-    objects = s3_client.list_objects_v2(Bucket=s3_bucket_name, Prefix=prefix)
+    # Paginated. list_objects_v2 returns at most 1000 keys per call, so a case
+    # prefix holding more artifacts than that silently reported metadata for the
+    # first page only - the same shape of bug as the unpaginated
+    # DescribeInstanceInformation calls elsewhere in this solution.
+    contents = []
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=s3_bucket_name, Prefix=prefix):
+        contents.extend(page.get("Contents", []))
 
     artifact_metadata = []
 
-    for obj in objects.get("Contents", []):
+    for obj in contents:
         object_key = obj["Key"]
         object_size = obj["Size"]
         file_name_with_extension = object_key.split("/")[-1]
 
-        filename_parts = object_key.split("_")
-
-        is_sha_256 = False
-
-        for part in filename_parts:
-            is_sha_256 = part.find("sha256") != -1
+        # any(), not a loop that reassigns. The loop this replaces had no break
+        # and no accumulation, so only the *last* underscore-separated part
+        # decided: "vol_sha256_part1.txt" was classified as not being a digest
+        # file, and the code then went looking for a digest of the digest.
+        is_sha_256 = any(
+            "sha256" in part for part in object_key.split("_")
+        )
 
         if not is_sha_256:
             # get filename without extension and add _sha256.txt
@@ -51,11 +59,12 @@ def resolve_artifact_metadata(s3_client, s3_bucket_name, prefix):
             )
             sha_value = None
 
-            if [
-                obj["Key"]
-                for obj in objects.get("Contents", [])
-                if obj["Key"] == f"{prefix}/{filename}_sha256.txt"
-            ]:
+            # Against every page, not just the first: the digest sidecar can
+            # easily be on a later page than the artifact it belongs to.
+            if any(
+                candidate["Key"] == f"{prefix}/{filename}_sha256.txt"
+                for candidate in contents
+            ):
                 sha_response = s3_client.get_object(
                     Bucket=s3_bucket_name,
                     Key=f"{prefix}/{filename}_sha256.txt",

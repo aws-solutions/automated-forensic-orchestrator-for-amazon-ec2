@@ -26,6 +26,13 @@ from ..common.exception import (
     MemoryAcquisitionError,
 )
 from ..common.log import get_logger
+from ..common.redact import redact
+from ..common.node_processing import normalize_instance_ids
+from ..common.platform_dispatch import (
+    PlatformNotSupported,
+    platform_of,
+    resolve_document,
+)
 from ..data.datatypes import (
     ArtifactCategory,
     ArtifactStatus,
@@ -40,7 +47,7 @@ logger = get_logger(__name__)
 
 @xray_recorder.capture("Check Memory Acquisition")
 def handler(event, context):
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
     s3_bucket_name = os.environ["S3_BUCKET_NAME"]
     s3_client = create_aws_client("s3")
     input_body = event["Payload"]["body"]
@@ -153,32 +160,59 @@ def handler(event, context):
         # check if all the list elements are True
         if all(overall_instance_memory_acquisition_status):
             output_body["isMemoryAcquisitionComplete"] = "TRUE"
-            memory_acquisition_document_name = os.environ[
-                "LINUX_LIME_MEMORY_ACQUISITION"
-            ]
-            windows_memory_acquisition_document_name = os.environ[
-                "WINDOWS_LIME_MEMORY_ACQUISITION"
-            ]
 
-            if "clusterInfo" in input_body:
-                platform_details = input_body.get("instanceInfo")[0].get(
-                    "PlatformDetails"
-                )
-            else:
-                platform_details = input_body.get("instanceInfo").get(
-                    "PlatformDetails"
-                )
-
-            if platform_details == "Windows":
-                memory_acquisition_document_name = (
-                    windows_memory_acquisition_document_name
-                )
+            # Unshare exactly what acquisition shared, for every instance it
+            # shared it for.
+            #
+            # This used to resolve one document from a single
+            # `platform_details == "Windows"` comparison, with no Red Hat case at
+            # all - so for a Red Hat target, acquisition shared the RHEL8
+            # document with the application account and completion removed the
+            # *Linux* document, leaving the RHEL8 document shared with that
+            # account indefinitely. It also read instanceInfo[0] for a cluster,
+            # so a mixed-platform EKS finding unshared one document and left the
+            # other shared. Both are standing grants to an account that may be
+            # the compromised one.
             ssm_client_current_account = create_aws_client("ssm")
-            ssm_client_current_account.modify_document_permission(
-                Name=memory_acquisition_document_name,
-                PermissionType="Share",
-                AccountIdsToRemove=[app_account_id],
-            )
+            instance_info = input_body.get("instanceInfo")
+            shared_documents = set()
+            for each_instance_id in normalize_instance_ids(
+                input_body.get("ForensicInstanceIds")
+                or input_body.get("instanceId")
+            ):
+                try:
+                    platform = platform_of(instance_info, each_instance_id)
+                    shared_documents.add(
+                        resolve_document(platform, "MEMORY_ACQUISITION")
+                    )
+                except PlatformNotSupported as unsupported:
+                    # Acquisition cannot have shared a document it could not
+                    # resolve either, so there is nothing to remove for this
+                    # instance - but say so rather than leaving it unexplained.
+                    logger.warning(
+                        "not unsharing any document for "
+                        f"{each_instance_id}: {unsupported}"
+                    )
+
+            for document_name in sorted(shared_documents):
+                try:
+                    ssm_client_current_account.modify_document_permission(
+                        Name=document_name,
+                        PermissionType="Share",
+                        AccountIdsToRemove=[app_account_id],
+                    )
+                    logger.info(
+                        f"removed the share of {document_name} from "
+                        f"{app_account_id}"
+                    )
+                except Exception as removal_error:
+                    # A failure to unshare must be visible: it leaves a forensic
+                    # document readable by the application account. It must not
+                    # fail the acquisition, whose evidence is already collected.
+                    logger.error(
+                        f"could not remove the share of {document_name} from "
+                        f"{app_account_id} - it remains shared: {removal_error}"
+                    )
         else:
             output_body["isMemoryAcquisitionComplete"] = "FALSE"
         # code ends here.

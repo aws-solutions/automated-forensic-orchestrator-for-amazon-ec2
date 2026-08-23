@@ -16,6 +16,7 @@
 
 from ..common.awsapi_cached_client import create_aws_client
 from ..common.log import get_logger
+from ..common.redact import redact
 
 logger = get_logger(__name__)
 
@@ -27,7 +28,7 @@ def lambda_handler(event, context):
     logger.info("triggering new pipeline")
     # const { RequestType, ResourceProperties } = event;
 
-    logger.info(event)
+    logger.info("event %s", redact(event))
     logger.info(context)
     request_type = event.get("RequestType")
     if request_type not in ["Create", "Update"]:

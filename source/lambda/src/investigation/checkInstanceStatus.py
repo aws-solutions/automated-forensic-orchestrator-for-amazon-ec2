@@ -22,6 +22,8 @@ from ..common.awsapi_cached_client import AWSCachedClient, create_aws_client
 from ..common.common import clean_date_format, create_response
 from ..common.exception import InvestigationError
 from ..common.log import get_logger
+from ..common.redact import redact
+from ..common.managed_nodes import ONLINE, describe_node
 from ..data.datatypes import ForensicsProcessingPhase
 from ..data.service import ForensicDataService
 
@@ -32,7 +34,7 @@ logger = get_logger(__name__)
 # function to check instance SSM status
 @xray_recorder.capture("Check Instance Status")
 def handler(event, _):
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
     region = os.environ["AWS_REGION"]
     ssmclient = AWSCachedClient(region).get_connection("ssm")
 
@@ -64,13 +66,20 @@ def handler(event, _):
             )
         )
 
-        ssm_response = ssmclient.describe_instance_information()
-
         output_body["forensicInvestigationInstance"] = {}
 
-        contains_forensic_id = any(
-            element.get("InstanceId") == forensic_investigation_instance_id
-            for element in ssm_response["InstanceInformationList"]
+        # Filtered and paginated via the shared lookup. This used to call
+        # DescribeInstanceInformation unfiltered and read a single response,
+        # which returns 10 managed nodes by default and 50 at most - so in any
+        # account with more managed nodes than one page the freshly launched
+        # analysis instance was simply absent, and a ready instance was reported
+        # as not associated with Systems Manager.
+        ssm_response = describe_node(
+            ssmclient, forensic_investigation_instance_id
+        )
+        contains_forensic_id = (
+            ssm_response is not None
+            and ssm_response.get("PingStatus") == ONLINE
         )
 
         if contains_forensic_id:

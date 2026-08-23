@@ -46,6 +46,10 @@ export class ForensicsSecurityHubConfigConstruct extends Construct {
             'ForensicImageBuilderDeadLetterQueue',
             {
                 encryption: QueueEncryption.KMS_MANAGED,
+                // Adds a queue policy denying every request that does not arrive over
+                // TLS. The messages here are failed Security Hub custom action events,
+                // which carry finding and instance identifiers.
+                enforceSSL: true,
             }
         );
 

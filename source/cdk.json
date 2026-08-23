@@ -13,38 +13,31 @@
         "vol2ProfilesBucket": "",
         "ssmExecutionTimeout": "1800",
         "diskSize": "512",
-        "forensicImageName": "sansift",
+        "forensicInstanceType": "m6i.2xlarge,m6a.2xlarge,m5.2xlarge,m5a.2xlarge",
+        "memoryAcquisitionTools": "lime,avml",
+        "forensicImageName": "forensic-analysis-ami",
         "appForensicAliasKMS": "forensickey",
-        "applicationAccounts": ["*"],
+        "applicationAccounts": [
+            "*"
+        ],
         "customerManagedCMKArns": {},
         "ec2ForensicImage": "",
         "sandbox": true,
-        "toolsAMI": {
-            "ap-southeast-2": { "amiID": "ami-07620139298af599e" },
-            "ap-southeast-1": { "amiID": "ami-0c802847a7dd848c0" },
-            "us-east-1": { "amiID": "ami-0cff7528ff583bf9a" },
-            "us-east-2": { "amiID": "ami-02d1e544b84bf7502" },
-            "us-west-1": { "amiID": "ami-0d9858aa3c6322f73" },
-            "us-west-2": { "amiID": "ami-098e42ae54c764c35" },
-            "ca-central-1": { "amiID": "ami-00f881f027a6d74a0" },
-            "ap-northeast-1": { "amiID": "ami-0b7546e839d7ace12" },
-            "ap-northeast-2": { "amiID": "ami-0fd0765afb77bcca7" }
-        },
+        "toolsAMI": {},
         "imageBuilderPipelines": [
             {
-                "name": "sansift",
+                "name": "forensic-analysis",
                 "dir": "./image-builder-components",
-                "instanceProfileName": "ImageBuilderInstanceProfile",
-                "cfnImageRecipeName": "sansift-image01",
-                "version": "1.0.2",
-                "parentImage": {
-                    "ap-southeast-2": { "amiID": "ami-0b7dcd6e6fd797935" },
-                    "ap-southeast-1": { "amiID": "ami-055d15d9cfddf7bd3" },
-                    "us-east-1": { "amiID": "ami-04505e74c0741db8d" },
-                    "us-east-2": { "amiID": "ami-0fb653ca2d3203ac1" },
-                    "us-west-1": { "amiID": "ami-01f87c43e618bf8f0" },
-                    "us-west-2": { "amiID": "ami-0892d3c7ee96c0bf7" }
-                }
+                "cfnImageRecipeName": "forensic-analysis-al2023",
+                "version": "1.3.0",
+                "parentImageSsmParameter": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64",
+                "instanceTypes": [
+                    "t3.large",
+                    "t3.xlarge"
+                ],
+                "rootVolumeSizeGiB": 30,
+                "buildSchedule": "cron(0 8 1 * ? *)",
+                "buildOnDeploy": true
             }
         ],
         "vpcInfo": {

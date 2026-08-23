@@ -9,8 +9,13 @@
         },
         "volumeDeviceName": {
             "type": "String",
-            "description": "(Optional) attachedVolumeMountInfo.",
-            "default": "/dev/xvdg1"
+            "description": "(Optional) Device name the evidence volume was requested at. Treated as a hint only: on Nitro instances the kernel names EBS volumes /dev/nvmeXnY, so this script resolves the real device from volumeId when this name does not exist.",
+            "default": "/dev/sdg1"
+        },
+        "volumeId": {
+            "type": "String",
+            "description": "(Optional) EBS volume id of the evidence volume. This is the only identifier that is stable across Xen and Nitro instances, so it is used to resolve the device when the requested name is absent.",
+            "default": "unknown-volumeId"
         },
         "targetFolder": {
             "type": "String",
@@ -43,15 +48,77 @@
             "action": "aws:runShellScript",
             "name": "runCommands",
             "precondition": {
-                "StringEquals": ["platformType", "Linux"]
+                "StringEquals": [
+                    "platformType",
+                    "Linux"
+                ]
             },
             "inputs": {
-                "timeoutSeconds": "60",
+                "timeoutSeconds": "300",
                 "runCommand": [
-                    "echo processing {{forensicId}}",
                     "#!/bin/bash",
-                    "mkdir -p {{targetFolder}}",
-                    "mount {{volumeDeviceName}} {{targetFolder}}"
+                    "# The shebang used to be the second line, so it was a comment: SSM runs this",
+                    "# with `sh -c <script>`, the kernel returned ENOEXEC and sh interpreted the",
+                    "# file itself.",
+                    "set -o pipefail",
+                    "fail() { echo \"DISK_PREPARE_FAILED: $1\" >&2; exit 1; }",
+                    "echo processing '{{forensicId}}'",
+                    "mkdir -p '{{targetFolder}}' || fail 'cannot create the mount point'",
+                    "# mount was unchecked, so a failed mount reported Success and the disk",
+                    "# investigation then ran plaso against an empty directory, producing a",
+                    "# header-only timeline that passed its size checks.",
+                    "if mountpoint -q '{{targetFolder}}'; then",
+                    "    echo '{{targetFolder}} is already mounted'",
+                    "else",
+                    "    # The device name is a hint, not a fact. attachEBSSnapShot asks EC2 for",
+                    "    # /dev/sdg and used to hand this script /dev/xvdg1, which only ever",
+                    "    # existed on the Xen instance families. Every current generation analysis",
+                    "    # instance is Nitro, where the kernel names EBS volumes /dev/nvmeXnY and",
+                    "    # udev provides /dev/sdg but never /dev/xvdg - so the mount failed on a",
+                    "    # device that could not exist. Resolve it properly instead.",
+                    "    dev='{{volumeDeviceName}}'",
+                    "    if [ ! -b \"$dev\" ]; then",
+                    "        xen=$(printf '%s' \"$dev\" | sed 's|^/dev/sd|/dev/xvd|')",
+                    "        if [ -b \"$xen\" ]; then",
+                    "            dev=\"$xen\"",
+                    "        else",
+                    "            # NVMe reports the EBS volume id, minus its dashes, as the serial.",
+                    "            want=$(printf '%s' '{{volumeId}}' | tr -d '-')",
+                    "            disk=$(lsblk -pdno NAME,SERIAL 2>/dev/null | awk -v w=\"$want\" '$2==w{print $1}' | head -1)",
+                    "            [ -n \"$disk\" ] || fail \"no block device for volume {{volumeId}}: neither $dev nor $xen exists and no disk reports that volume id as its serial\"",
+                    "            # A cloned system volume carries several partitions - the OS lives on",
+                    "            # the largest, not necessarily the first.",
+                    "            part=$(lsblk -pnlo NAME,TYPE,SIZE \"$disk\" | awk '$2==\"part\"' | sort -k3 -h | tail -1 | awk '{print $1}')",
+                    "            dev=\"${part:-$disk}\"",
+                    "        fi",
+                    "    fi",
+                    "    echo \"evidence device: $dev\"",
+                    "    fs_type=$(blkid -o value -s TYPE \"$dev\" 2>/dev/null)",
+                    "    echo \"evidence filesystem: ${fs_type:-undetected}\"",
+                    "    case \"$fs_type\" in",
+                    "    ntfs|ntfs3)",
+                    "        # Amazon Linux 2023 has no ntfs-3g in any of its repos, but its kernel",
+                    "        # does ship the in-tree ntfs3 driver, unloaded by default. blkid reports",
+                    "        # the type as \"ntfs\" while the kernel registers it as \"ntfs3\", so the",
+                    "        # bare mount that used to be here failed with \"unknown filesystem type",
+                    "        # 'ntfs'\" and every Windows disk investigation died at this step.",
+                    "        # Read only: this is evidence, and ntfs3 write support is partial.",
+                    "        modprobe ntfs3 || fail 'the ntfs3 kernel driver is unavailable, so this Windows volume cannot be mounted'",
+                    "        mount -t ntfs3 -o ro \"$dev\" '{{targetFolder}}' || fail \"cannot mount the NTFS volume $dev at {{targetFolder}}\"",
+                    "        ;;",
+                    "    xfs)",
+                    "        # An evidence volume cloned from an instance built on the same AMI as",
+                    "        # this analysis host carries the same XFS filesystem UUID as the host's",
+                    "        # own root, and XFS refuses a duplicate UUID. nouuid skips that check.",
+                    "        mount -o ro,nouuid \"$dev\" '{{targetFolder}}' || fail \"cannot mount the XFS volume $dev at {{targetFolder}}\"",
+                    "        ;;",
+                    "    *)",
+                    "        mount -o ro \"$dev\" '{{targetFolder}}' || fail \"cannot mount $dev (${fs_type:-undetected} filesystem) at {{targetFolder}}\"",
+                    "        ;;",
+                    "    esac",
+                    "fi",
+                    "mountpoint -q '{{targetFolder}}' || fail \"{{targetFolder}} is not a mount point after mounting the evidence volume\"",
+                    "exit 0;"
                 ]
             }
         }

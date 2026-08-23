@@ -24,6 +24,9 @@ from logging import getLogger
 import boto3
 from aws_xray_sdk.core import patch_all, xray_recorder
 from botocore.config import Config
+from botocore.exceptions import ClientError
+
+from .exception import ForensicLambdaExecutionException
 
 logger = getLogger(__name__)
 
@@ -54,7 +57,42 @@ def create_aws_client(
             target_region=target_region,
         )
 
-        return ec2_assumerole_session.client(client_name)
+        try:
+            return ec2_assumerole_session.client(client_name)
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "AccessDenied":
+                raise
+            # The assume role above is how every Lambda reaches the instance
+            # under investigation, and it happens on the first API call of an
+            # incident. Botocore's own message names the assuming role and the
+            # role it could not assume, but not why the role is missing or what
+            # to do, and the same-account case reads as nonsense: "cannot assume
+            # a role in the account I am already in".
+            #
+            # Say what is actually wrong. This is deliberately not a fallback to
+            # a local client: the solution's Lambdas are not granted the
+            # permissions this role holds, so falling back would trade one
+            # AccessDenied for a less obvious one further into the incident.
+            same_account = str(target_account) == str(current_account)
+            remedy = (
+                "Deploy deployment-prerequisties/cross-account-role.yml into "
+                f"account {target_account} with "
+                f"solutionInstalledAccount={current_account} and "
+                "solutionAccountRegion set to this region."
+            )
+            if same_account:
+                remedy += (
+                    " This is required even though the forensic account and "
+                    "the account under investigation are the same one: the "
+                    "same-account shortcut in create_aws_client is gated on "
+                    "app_account_role being unset, and the CDK always sets "
+                    "APP_ACCOUNT_ROLE."
+                )
+            raise ForensicLambdaExecutionException(
+                f"cannot assume {app_account_role} in account "
+                f"{target_account} to create an {client_name} client. "
+                f"{remedy} Underlying error: {error}"
+            ) from error
 
 
 patch_all()

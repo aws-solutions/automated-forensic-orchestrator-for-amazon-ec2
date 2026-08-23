@@ -13,7 +13,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 */
-import { CustomResource } from 'aws-cdk-lib';
+import { CustomResource, Stack } from 'aws-cdk-lib';
 import { IVpc } from 'aws-cdk-lib/aws-ec2';
 import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
@@ -50,23 +50,24 @@ export class ForensicsSecurityHubActionConstruct extends Construct {
         //-------------------------------------------------------------------------
         // Custom Lambda Policy
         //
+        // No log group grant here: the execution role carries
+        // AWSLambdaBasicExecutionRole, which already allows logs:CreateLogGroup,
+        // logs:CreateLogStream and logs:PutLogEvents on the function's own log group.
         const createCustomActionPolicy = new Policy(this, 'createCustomActionPolicy', {
             policyName: 'forensic_Custom_Action',
             statements: [
                 new PolicyStatement({
                     actions: [
-                        'logs:CreateLogGroup',
-                        'logs:CreateLogStream',
-                        'logs:PutLogEvents',
-                    ],
-                    resources: ['*'],
-                }),
-                new PolicyStatement({
-                    actions: [
                         'securityhub:CreateActionTarget',
                         'securityhub:DeleteActionTarget',
                     ],
-                    resources: ['*'],
+                    // Both actions are authorized against the hub, whose ARN is always
+                    // hub/default, so this needs no wildcard.
+                    resources: [
+                        `arn:${Stack.of(this).partition}:securityhub:${
+                            Stack.of(this).region
+                        }:${Stack.of(this).account}:hub/default`,
+                    ],
                 }),
             ],
         });

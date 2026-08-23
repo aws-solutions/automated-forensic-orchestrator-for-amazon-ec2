@@ -34,6 +34,7 @@ from ..common.exception import (
     MemoryAcquisitionError,
 )
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.datatypes import ForensicsProcessingPhase, ResourceType
 from ..data.service import ForensicDataService
 
@@ -44,11 +45,11 @@ cluster_cache: Dict[str, Any] = {}
 
 @xray_recorder.capture("Isolate Instance")
 def handler(event, context):
-    logger.info("Got event{}".format(event))
+    logger.info("Got event %s", redact(event))
     input_body = {}
     error_handling_flow = False
     app_account_role = os.environ["APP_ACCOUNT_ROLE"]
-    logger.info(f"inputboy {input_body}")
+    logger.info("input body %s", redact(input_body))
     if event.get("Error") == MemoryAcquisitionError.__name__:
         cause = json.loads(event["Cause"])
         error_message = cause["errorMessage"]

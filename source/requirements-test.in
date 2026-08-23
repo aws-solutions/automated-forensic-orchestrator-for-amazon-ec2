@@ -1,10 +1,20 @@
-pylint==3.2.3
-coverage==6.3.2
-black==24.4.2
-flake8==4.0.1
-mypy==0.930
-mypy-extensions==0.4.3
-requests==2.32.4
-types-requests==2.27.11
-pytest==7.4.4
-urllib3==1.26.19
+# Test, lint and security tooling. Deliberately kept out of
+# lambda/requirements.in so none of it ships in the Lambda dependency layer,
+# which has a hard 262144000 byte unzipped limit.
+#
+# pytest/pytest-cov/pytest-env/pytest-mock drive `make test`; bandit drives
+# `make bandit`, which `make fmt` and `make lint` depend on.
+bandit==1.9.4
+black==26.5.1
+coverage==7.15.4
+flake8==7.3.0
+mypy==1.20.2
+mypy-extensions==1.1.0
+pylint==3.3.9
+pytest==9.1.1
+pytest-cov==7.1.0
+pytest-env==1.7.0
+pytest-mock==3.15.1
+requests==2.34.2
+types-requests==2.33.0.20260712
+urllib3==2.7.0

@@ -20,9 +20,20 @@ import uuid
 from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import AWSCachedClient, create_aws_client
-from ..common.common import clean_date_format, create_response
+from ..common.platform_dispatch import (
+    is_windows,
+    platform_of,
+    resolve_document,
+)
+from ..common.common import (
+    clean_date_format,
+    create_response,
+    ssm_output_log_group,
+)
 from ..common.exception import InvestigationError
 from ..common.log import get_logger
+from ..common.redact import redact
+from ..common.managed_nodes import is_node_online
 from ..data.datatypes import ForensicsProcessingPhase
 from ..data.service import ForensicDataService
 
@@ -40,7 +51,9 @@ def handler(event, _):
     """
     region = os.environ["AWS_REGION"]
     s3_bucket_name = os.environ["S3_BUCKET_NAME"]
-    disk_investigation_document_name = os.environ["LINUX_DISK_INVESTIGATION"]
+    # The document is resolved from the instance's platform below, not defaulted
+    # to Linux here. A default meant a Windows target whose platform lookup went
+    # wrong ran the Linux disk investigation instead of failing.
     fds = ForensicDataService(
         ddb_client=create_aws_client("dynamodb"),
         ddb_table_name=os.environ["INSTANCE_TABLE_NAME"],
@@ -69,25 +82,21 @@ def handler(event, _):
     #     ]
     try:
         if "clusterInfo" in input_body:
-            parser_id = "linux"
             instance_id = input_body["instanceId"][0]
-            for each_instance_info in input_body["instanceInfo"]:
-                if each_instance_info["InstanceId"] == instance_id:
-                    platform_details = each_instance_info["PlatformDetails"]
-                    break
-            if platform_details == "Windows":
-                parser_id = "winevt,winevtx,winprefetch"
-                disk_investigation_document_name = os.environ[
-                    "WINDOWS_DISK_INVESTIGATION"
-                ]
         else:
             instance_id = input_body.get("instanceId")
-            parser_id = "linux"
-            if input_body["instanceInfo"]["PlatformDetails"] == "Windows":
-                parser_id = "winevt,winevtx,winprefetch"
-                disk_investigation_document_name = os.environ[
-                    "WINDOWS_DISK_INVESTIGATION"
-                ]
+        # platform_of raises when the instance is absent from instanceInfo. The
+        # cluster branch used to assign platform_details inside its loop with no
+        # else, so a node that was not described there left the name unbound and
+        # the comparison below raised UnboundLocalError - after the investigation
+        # instance had already been launched.
+        platform = platform_of(input_body["instanceInfo"], instance_id)
+        parser_id = "linux"
+        if is_windows(platform):
+            parser_id = "winevt,winevtx,winprefetch"
+        disk_investigation_document_name = resolve_document(
+            platform, "DISK_INVESTIGATION"
+        )
         volume_list = input_body["forensicAttachedVolumeInfo"]
         volume_artifact_map = input_body["VolumeArtifactMap"]
 
@@ -96,16 +105,31 @@ def handler(event, _):
         )
         ssm_client = AWSCachedClient(region).get_connection("ssm")
 
-        response = ssm_client.describe_instance_information()
-
-        logger.info(response)
-
-        is_ssm_installed = False
-
-        is_ssm_installed = any(
-            item["InstanceId"] == forensic_investigation_instance_id
-            for item in response["InstanceInformationList"]
+        # Filtered and paginated via the shared lookup, and PingStatus is
+        # checked. This used to call DescribeInstanceInformation unfiltered and
+        # read one response - 10 nodes by default, 50 at most - so in any account
+        # with more managed nodes than one page is_ssm_installed stayed False,
+        # **no disk investigation command was sent at all**, and the handler
+        # still returned 200: the investigation reported success having produced
+        # nothing.
+        is_ssm_installed = is_node_online(
+            ssm_client, forensic_investigation_instance_id
         )
+        logger.info(
+            f"{forensic_investigation_instance_id} online: {is_ssm_installed}"
+        )
+
+        if not is_ssm_installed:
+            # This used to fall past the `if` below and return 200 with no
+            # ssmCommandList, so a disk investigation that sent no commands at
+            # all reported success - and the missing evidence surfaced later, on
+            # another host, possibly after the target was gone.
+            raise InvestigationError(
+                f"the forensic investigation instance "
+                f"{forensic_investigation_instance_id} is not registered with "
+                "Systems Manager or is not Online, so no disk investigation "
+                "command can be sent to it"
+            )
 
         ssm_cmd_list = []
         ssm_cmd_artifact_map = {}
@@ -146,14 +170,16 @@ def handler(event, _):
                     "ParserID": [parser_id],
                     "TargetVolume": [f"{volume_number}"],
                 }
-                logger.info(params)
+                logger.info("ssm parameters %s", redact(params))
                 response = ssm_client.send_command(
                     InstanceIds=[forensic_investigation_instance_id],
                     DocumentName=disk_investigation_document_name,
                     Comment="Disk Analysis for " + instance_id,
                     Parameters=params,
                     CloudWatchOutputConfig={
-                        "CloudWatchLogGroupName": forensic_id,
+                        "CloudWatchLogGroupName": ssm_output_log_group(
+                            forensic_id
+                        ),
                         "CloudWatchOutputEnabled": True,
                     },
                 )
@@ -187,7 +213,7 @@ def handler(event, _):
             output_body["ssmCommandList"] = ssm_cmd_list
             output_body["CommandIdArtifactMap"] = ssm_cmd_artifact_map
 
-            logger.info(output_body)
+            logger.info("output %s", redact(output_body))
         return create_response(200, output_body)
 
     except Exception as e:

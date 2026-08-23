@@ -386,6 +386,21 @@ def mock_connection(ec_response):
     mockClient.get_item = get_item_fn
     mockClient.transact_write_items = transact_write_item_fn
 
+    # resolve_artifact_metadata paginates now, because list_objects_v2 returns
+    # at most 1000 keys and a case prefix can hold more. The paginator yields the
+    # same single page the direct call used to return.
+    def get_paginator(operation_name):
+        assert operation_name == "list_objects_v2", (
+            "unexpected S3 paginator " + operation_name
+        )
+        paginator = MagicMock()
+        paginator.paginate.side_effect = lambda **kwargs: [
+            list_objects_event()
+        ]
+        return paginator
+
+    mockClient.get_paginator = get_paginator
+
     return mockClient
 
 

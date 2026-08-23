@@ -19,9 +19,16 @@ import uuid
 from aws_xray_sdk.core import xray_recorder
 
 from ..common.awsapi_cached_client import AWSCachedClient, create_aws_client
-from ..common.common import clean_date_format, create_response
+from ..common.platform_dispatch import platform_of, resolve_document
+from ..common.managed_nodes import is_node_online
+from ..common.common import (
+    clean_date_format,
+    create_response,
+    ssm_output_log_group,
+)
 from ..common.exception import InvestigationError
 from ..common.log import get_logger
+from ..common.redact import redact
 from ..data.datatypes import ForensicsProcessingPhase
 from ..data.service import ForensicDataService
 
@@ -35,9 +42,11 @@ instance_id = ""
 
 region = os.environ["AWS_REGION"]
 s3_bucket_name = os.environ["S3_BUCKET_NAME"]
-windows_memory_acquisition_document_name = os.environ[
-    "WINDOWS_LIME_MEMORY_LOAD_INVESTIGATION"
-]
+# The Windows document name is no longer read here. It was resolved at import
+# time, so an unset variable failed the whole module rather than the one
+# investigation that needed it, and the name it held was misleading: it is the
+# memory *load investigation* document, not an acquisition document.
+# platform_dispatch.resolve_document reads it when a Windows target needs it.
 
 
 @xray_recorder.capture("Run Memory Forensics")
@@ -49,56 +58,39 @@ def handler(event, _):
 
     if "clusterInfo" in input_body:
         for each_instance_id in input_body["ForensicInstanceIds"]:
-            for each_instance_info in input_body["instanceInfo"]:
-                if each_instance_info["InstanceId"] == each_instance_id:
-                    platform_name = each_instance_info["PlatformName"]
-                    platform_version = each_instance_info["PlatformVersion"]
-                    platform_detail = each_instance_info["PlatformDetails"]
-                    break
+            # platform_of raises when a node is absent from instanceInfo. The
+            # loop this replaces assigned inside its inner loop and had no else,
+            # so an absent node was investigated with the *previous* node's
+            # platform - and therefore possibly another distribution's document
+            # and symbol table - or raised UnboundLocalError on the first node.
+            platform = platform_of(input_body["instanceInfo"], each_instance_id)
             output_body = perform_memory_investigation(
                 each_instance_id,
-                platform_name,
-                platform_version,
-                platform_detail,
+                platform,
                 event,
             )
         return create_response(200, output_body)
     else:
         instance_id = input_body["ForensicInstanceIds"][0]
-        platform_name = input_body.get("instanceInfo").get("PlatformName")
-        platform_version = input_body.get("instanceInfo").get(
-            "PlatformVersion"
-        )
-        platform_detail = input_body.get("instanceInfo").get("PlatformDetails")
+        platform = platform_of(input_body.get("instanceInfo"), instance_id)
         output_body = perform_memory_investigation(
             instance_id,
-            platform_name,
-            platform_version,
-            platform_detail,
+            platform,
             event,
         )
         return create_response(200, output_body)
 
 
-def perform_memory_investigation(
-    instance_id, platform_name, platform_version, platform_detail, event
-):
-    if platform_detail == "Windows":
-        memory_load_document_name = windows_memory_acquisition_document_name
-    elif platform_name == "Red Hat Enterprise Linux":
-        if 10 > float(platform_version) > 9:
-            rhel_version = "9"
-        if 9 > float(platform_version) > 8:
-            rhel_version = "8"
-        if 8 > float(platform_version) > 7:
-            rhel_version = "7"
-        memory_load_document_name = os.environ[
-            "RHEL" + rhel_version + "_LIME_MEMORY_LOAD_INVESTIGATION"
-        ]
-    else:
-        memory_load_document_name = os.environ[
-            "LIME_MEMORY_LOAD_INVESTIGATION"
-        ]
+def perform_memory_investigation(instance_id, platform, event):
+    # One resolver, shared with acquisition, completion and disk investigation.
+    # This function used to derive the Red Hat major version from three ranges
+    # open at the lower bound - so RHEL 8.0 matched none of them and
+    # rhel_version was unbound - and then build the environment variable name by
+    # concatenating it, which raised a bare KeyError for any release with no
+    # deployed document. See common/platform_dispatch.py.
+    memory_load_document_name = resolve_document(
+        platform, "MEMORY_LOAD_INVESTIGATION"
+    )
     fds = ForensicDataService(
         ddb_client=create_aws_client("dynamodb"),
         ddb_table_name=os.environ["INSTANCE_TABLE_NAME"],
@@ -116,7 +108,7 @@ def perform_memory_investigation(
     input_body = event["Payload"]["body"]
     forensic_id = input_body["forensicId"]
     s3_role_arn = os.environ["S3_COPY_ROLE"]
-    logger.info(f"The input body is {input_body}")
+    logger.info("The input body is %s", redact(input_body))
     input_artifact_id = input_body["InstanceResults"][instance_id][
         "MemoryAcquisition"
     ]["CommandInputArtifactId"]
@@ -130,16 +122,28 @@ def perform_memory_investigation(
         ]
         ssm_client = create_aws_client("ssm")
 
-        response = ssm_client.describe_instance_information()
-
-        logger.info(response)
-
-        is_ssm_installed = False
-
-        is_ssm_installed = any(
-            item["InstanceId"] == forensic_investigation_instance_id
-            for item in response["InstanceInformationList"]
+        # Filtered and paginated. An unfiltered DescribeInstanceInformation
+        # returns 10 managed nodes by default and 50 at most, so in any account
+        # with more managed nodes than one page the freshly launched analysis
+        # instance was simply absent from the response: is_ssm_installed stayed
+        # False, no analysis command was ever sent, and the investigation
+        # reported success having produced nothing. PingStatus is checked because
+        # a registered node that is offline cannot run the analysis either.
+        is_ssm_installed = is_node_online(
+            ssm_client, forensic_investigation_instance_id
         )
+        if not is_ssm_installed:
+            # The only return used to sit inside `if is_ssm_installed:` with no
+            # else, so an unreachable analysis host fell out of the function and
+            # it returned None - a null Payload for the state machine, which
+            # fails the next state on a missing field rather than saying the
+            # analysis host could not be reached.
+            raise InvestigationError(
+                f"the forensic investigation instance "
+                f"{forensic_investigation_instance_id} is not registered with "
+                "Systems Manager or is not Online, so no memory analysis "
+                "command can be sent to it"
+            )
 
         output_body["forensicId"] = forensic_id
         output_body["ForensicInstanceId"] = instance_id
@@ -188,7 +192,9 @@ def perform_memory_investigation(
                 Comment="Memory Analysis for " + instance_id,
                 Parameters=params,
                 CloudWatchOutputConfig={
-                    "CloudWatchLogGroupName": forensic_id,
+                    "CloudWatchLogGroupName": ssm_output_log_group(
+                        forensic_id
+                    ),
                     "CloudWatchOutputEnabled": True,
                 },
             )
@@ -223,7 +229,7 @@ def perform_memory_investigation(
                 "CommandIdArtifactMap"
             ] = ssm_cmd_artifact_map
 
-            logger.info(output_body)
+            logger.info("output %s", redact(output_body))
             return output_body
 
     except Exception as e:

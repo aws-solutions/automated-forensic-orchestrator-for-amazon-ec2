@@ -91,6 +91,19 @@ def setupevent(request):
     global ssmResponse
     ssmResponse = {
         "InstanceInformationList": [
+            # The analysis instance the event names. Without it
+            # is_ssm_installed was False, so test_trigger_event only ever
+            # exercised the "SSM not installed" path - which also returns
+            # statusCode 200, so asserting that alone proved nothing about the
+            # analysis command ever being sent.
+            {
+                "InstanceId": "i-0b3daeccbc7e52246",
+                "PingStatus": "Online",
+                "PlatformType": "Linux",
+                "PlatformName": "Amazon Linux",
+                "PlatformVersion": "2023",
+                "ResourceType": "EC2Instance",
+            },
             {
                 "InstanceId": "i-04a5fde997d49e225",
                 "PingStatus": "Online",
@@ -432,6 +445,22 @@ def setup_postive_mocks():
     }
 
 
+def get_paginator_fn(operation_name):
+    """Paginator seam for DescribeInstanceInformation.
+
+    The handler now filters on the analysis instance id and pages, because an
+    unfiltered call returns only the first 10 managed nodes and the analysis
+    instance was absent from that page in any busy account.
+    """
+    if operation_name != "describe_instance_information":
+        raise AssertionError("unexpected paginator " + operation_name)
+    paginator = MagicMock()
+    paginator.paginate.side_effect = lambda **kwargs: [
+        describe_instance_information_fn(**kwargs)
+    ]
+    return paginator
+
+
 def mock_connection(ec_response):
     mockClient = Mock(boto3.client("ssm"))
     mockClient.get_caller_identity = MagicMock()
@@ -441,6 +470,7 @@ def mock_connection(ec_response):
     mockClient.get_item = get_item_fn
     mockClient.assume_role = assume_role_fn
     mockClient.describe_instance_information = describe_instance_information_fn
+    mockClient.get_paginator = get_paginator_fn
     mockClient.send_command = send_command_fn
     mockClient.update_item = update_item_fn
     mockClient.get_item = get_item_fn
@@ -457,6 +487,11 @@ def mock_connection(ec_response):
         "LIME_MEMORY_LOAD_INVESTIGATION": "documentName",
         "RHEL8_LIME_MEMORY_LOAD_INVESTIGATION": "doc_name",
         "WINDOWS_LIME_MEMORY_LOAD_INVESTIGATION": "win_doc_name",
+        # Read when the analysis command is actually sent. Absent here until the
+        # fixture started matching the analysis instance, because the send block
+        # was never reached.
+        "VOLATILITY2_PROFILES_BUCKET": "BUCKET_FORENSICS",
+        "VOLATILITY2_PROFILES_PREFIX": "volatility3/symbols",
     },
 )
 def test_trigger_event():
@@ -469,6 +504,12 @@ def test_trigger_event():
     ):
         ret = function_under_test(event, "")
         assert ret.get("statusCode") == 200
+        # The "SSM not installed" path also returns 200, so assert the analysis
+        # command was actually sent to the analysis instance.
+        send_command_fn.assert_called()
+        assert send_command_fn.call_args.kwargs["InstanceIds"] == [
+            "i-0b3daeccbc7e52246"
+        ]
 
 
 @mock.patch.dict(
@@ -493,3 +534,50 @@ def test_error_flowtrigger_event():
         ret = function_under_test(event, "")
         assert execinfo.type == Exception
         update_item_fn.assert_called()
+
+
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "S3_BUCKET_NAME": "BUCKET_FORENSICS",
+        "S3_COPY_ROLE": "arn:s3copRole",
+        "LIME_MEMORY_LOAD_INVESTIGATION": "documentName",
+        "RHEL8_LIME_MEMORY_LOAD_INVESTIGATION": "doc_name",
+        "WINDOWS_LIME_MEMORY_LOAD_INVESTIGATION": "win_doc_name",
+        "VOLATILITY2_PROFILES_BUCKET": "BUCKET_FORENSICS",
+        "VOLATILITY2_PROFILES_PREFIX": "volatility3/symbols",
+    },
+)
+def test_the_analysis_instance_is_looked_up_by_id_not_by_listing_everything():
+    """An unfiltered DescribeInstanceInformation returns 10 managed nodes by
+    default and 50 at most.
+
+    The analysis instance is launched seconds earlier, so in any account with
+    more managed nodes than one page it was absent from the response: no
+    analysis command was sent and the investigation reported success having
+    produced nothing.
+    """
+    assume_role_fn.return_value = tokens
+    setup_postive_mocks()
+    describe_instance_information_fn.reset_mock()
+
+    with patch.object(
+        AWSCachedClient,
+        "get_connection",
+        Mock(return_value=mock_connection({})),
+    ):
+        ret = function_under_test(event, "")
+
+    assert ret.get("statusCode") == 200
+    describe_instance_information_fn.assert_called()
+    # The call must narrow to the analysis instance rather than listing the
+    # account's managed nodes and hoping it is on the first page.
+    kwargs = describe_instance_information_fn.call_args.kwargs
+    assert "Filters" in kwargs, (
+        "DescribeInstanceInformation was called without a filter, so the "
+        "analysis instance is only found while the account is small"
+    )
+    keys = [f["Key"] for f in kwargs["Filters"]]
+    assert "InstanceIds" in keys
