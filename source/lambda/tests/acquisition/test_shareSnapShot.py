@@ -59,9 +59,26 @@ def mock_connection(ec_response):
         "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
     },
 )
+@mock.patch.dict(
+    os.environ,
+    {
+        "AWS_REGION": "ap-southeast-2",
+        "INSTANCE_TABLE_NAME": "table",
+        "APP_ACCOUNT_ROLE": "ForensicEc2AllowAccessRole",
+    },
+)
+@patch.object(AWSCachedClient, "_get_local_account_id", Mock(return_value={}))
 def test_same_account_disk_flow_returns_success():
     """Named "share between accounts", but instanceAccount here equals the account
-    in invoked_function_arn, so this is the same-account path."""
+    in invoked_function_arn, so this is the same-account path.
+
+    _get_local_account_id is patched, as in every other suite that constructs an
+    AWSCachedClient, because it calls sts:GetCallerIdentity. Without the patch
+    this test made a real call to STS: it passed on a developer machine by
+    silently using that developer's credentials, and failed in CI where there are
+    none. The environment decorator is here for the same reason the neighbouring
+    tests have one - without it the test read whatever region the shell happened
+    to export."""
     event = {
         "Payload": {
             "body": {
