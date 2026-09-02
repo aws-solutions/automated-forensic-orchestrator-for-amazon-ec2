@@ -11,7 +11,7 @@
 arnparse==0.0.2
 aws-xray-sdk==2.15.0
 boto3==1.43.73
-botocore==1.43.73
+botocore==1.43.83
 eks-token==0.3.0
 # Pinned below 36.x deliberately. 36.0.0 added an asyncio client
 # (kubernetes.aio) plus a hard aiohttp dependency, which costs 54 MB of layer
