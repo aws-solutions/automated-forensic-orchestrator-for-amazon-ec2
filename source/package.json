@@ -35,7 +35,7 @@
     "dependencies": {
         "@babel/core": "7.29.7",
         "@eslint/js": "^10.0.1",
-        "@types/node": "^20.19.43",
+        "@types/node": "^26.4.0",
         "aws-cdk": "^2.1137.0",
         "aws-cdk-lib": "2.265.0",
         "@aws-sdk/client-cloudformation": "^3.1113.0",
