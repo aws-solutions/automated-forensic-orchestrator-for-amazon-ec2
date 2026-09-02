@@ -4,7 +4,7 @@
 #
 #    pip-compile --no-strip-extras --output-file=requirements-test.txt requirements-test.in
 #
-astroid==3.3.11
+astroid==4.0.4
     # via pylint
 bandit==1.9.4
     # via -r requirements-test.in
@@ -71,7 +71,7 @@ pygments==2.21.0
     # via
     #   pytest
     #   rich
-pylint==3.3.9
+pylint==4.0.8
     # via -r requirements-test.in
 pytest==9.1.1
     # via
