@@ -19,6 +19,6 @@ eks-token==0.3.0
 # isolation/isolateEc2.py only use the synchronous `client` and `config` APIs.
 # 35.0.0 is the newest release without the async client, and every version from
 # 31 to 36 is free of known advisories, so there is no security cost.
-kubernetes==35.0.0
+kubernetes==36.0.3
 requests==2.34.2
 urllib3==2.7.0

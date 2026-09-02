@@ -4,17 +4,25 @@
 #
 #    pip-compile --no-strip-extras --output-file=lambda/requirements.txt lambda/requirements.in
 #
+aiohappyeyeballs==2.7.1
+    # via aiohttp
+aiohttp==3.14.3
+    # via kubernetes
+aiosignal==1.4.0
+    # via aiohttp
 arnparse==0.0.2
-    # via -r lambda/requirements.in
+    # via -r requirements.in
+attrs==26.1.0
+    # via aiohttp
 aws-xray-sdk==2.15.0
-    # via -r lambda/requirements.in
+    # via -r requirements.in
 awscli==1.46.0
     # via eks-token
 boto3==1.43.73
-    # via -r lambda/requirements.in
+    # via -r requirements.in
 botocore==1.43.73
     # via
-    #   -r lambda/requirements.in
+    #   -r requirements.in
     #   aws-xray-sdk
     #   boto3
     #   s3transfer
@@ -31,18 +39,32 @@ docutils==0.19
 durationpy==0.10
     # via kubernetes
 eks-token==0.3.0
-    # via -r lambda/requirements.in
+    # via -r requirements.in
+frozenlist==1.8.0
+    # via
+    #   aiohttp
+    #   aiosignal
 idna==3.19
-    # via requests
+    # via
+    #   requests
+    #   yarl
 jmespath==1.1.0
     # via
     #   awscli
     #   boto3
     #   botocore
-kubernetes==35.0.0
-    # via -r lambda/requirements.in
+kubernetes==36.0.3
+    # via -r requirements.in
+multidict==6.7.1
+    # via
+    #   aiohttp
+    #   yarl
 oauthlib==3.3.1
     # via requests-oauthlib
+propcache==0.5.2
+    # via
+    #   aiohttp
+    #   yarl
 pyasn1==0.6.4
     # via rsa
 python-dateutil==2.9.0.post0
@@ -56,7 +78,7 @@ pyyaml==6.0.3
     #   kubernetes
 requests==2.34.2
     # via
-    #   -r lambda/requirements.in
+    #   -r requirements.in
     #   kubernetes
     #   requests-oauthlib
 requests-oauthlib==2.0.0
@@ -69,9 +91,13 @@ six==1.17.0
     # via
     #   kubernetes
     #   python-dateutil
+typing-extensions==4.16.0
+    # via
+    #   aiohttp
+    #   aiosignal
 urllib3==2.7.0
     # via
-    #   -r lambda/requirements.in
+    #   -r requirements.in
     #   awscli
     #   botocore
     #   kubernetes
@@ -80,3 +106,5 @@ websocket-client==1.9.0
     # via kubernetes
 wrapt==2.3.0
     # via aws-xray-sdk
+yarl==1.24.5
+    # via aiohttp
