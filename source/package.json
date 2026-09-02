@@ -33,7 +33,7 @@
         "constructs": "^10.0.0"
     },
     "dependencies": {
-        "@babel/core": "7.29.7",
+        "@babel/core": "8.0.1",
         "@eslint/js": "^10.0.1",
         "@types/node": "^20.19.43",
         "aws-cdk": "^2.1137.0",
