@@ -6,7 +6,7 @@
 # `make bandit`, which `make fmt` and `make lint` depend on.
 bandit==1.9.4
 black==26.5.1
-coverage==7.15.4
+coverage==7.16.0
 flake8==7.3.0
 mypy==1.20.2
 mypy-extensions==1.1.0
