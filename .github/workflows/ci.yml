@@ -56,7 +56,7 @@ jobs:
       # 3.12 is the Lambda runtime this solution targets. See the note above:
       # this step is what stops the Makefile rebuilding the venv on some other
       # interpreter.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
