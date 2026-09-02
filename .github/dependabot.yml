@@ -37,6 +37,7 @@ updates:
     labels:
       - "dependencies"
       - "python"
+      - "security"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -69,6 +70,7 @@ updates:
     labels:
       - "dependencies"
       - "python"
+      - "security"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -95,6 +97,8 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+      - "npm"
+      - "security"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -123,6 +127,8 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "github-actions"
+      - "ci-cd"
     commit-message:
       # No `include: scope` here: the prefix already names the area, and combining
       # the two produces a doubled "chore(ci)(deps)" subject.
@@ -143,8 +149,13 @@ updates:
 #    prefix yields subjects like "chore(deps)(deps): Bump ...". Using "chore" gives
 #    the intended "chore(deps):" and "chore(deps-dev):".
 #
-# Labels are limited to those this repository already defines (`dependencies`,
-# `python`, `javascript`): Dependabot does not create missing labels, and naming
-# one that does not exist makes the update job error. If `npm`, `security`,
-# `github-actions` or `ci-cd` labels are wanted, create them in repository
-# settings first, then add them here.
+# Every label named above exists in this repository. Dependabot does not create
+# missing labels and naming one that does not exist errors the update job, so if
+# you add an ecosystem here, create its labels in repository settings first.
+#
+# A caveat on `security`: it is applied to every pull request from the pip and npm
+# ecosystems, because dependabot.yml cannot label security updates differently from
+# routine version updates. So it marks the ecosystem as security-relevant rather
+# than marking an individual PR as fixing an advisory -- it is not a filter for
+# "this PR closes a CVE". GitHub already distinguishes real security updates in the
+# Dependabot alerts view, which is the reliable place to look.
